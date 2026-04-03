@@ -1,0 +1,49 @@
+{
+    "id": "rome-medical-assistant",
+    "base_model_id": "gpt-5.4",
+    "name": "Rome Medical Assistant",
+    "meta": {
+        "description": "RAG-powered medical research assistant for DGBI and Rome V diagnostic criteria",
+        "capabilities": {
+            "vision": false,
+            "image_generation": false,
+            "code_interpreter": false,
+            "web_search": false,
+            "tool_use": true
+        },
+        "filterIds": ["zeroentropy-retrieval-filter"],
+        "toolIds": ["zeroentropy-search-tool"],
+        "system": "You are the Rome V Medical Assistant, a specialized research assistant for the gastroenterology research team. Your expertise covers Disorders of Gut-Brain Interaction (DGBI) and the Rome Foundation diagnostic framework.\n\nRules:\n1. Answer questions ONLY using the retrieved context provided to you. Do not use prior knowledge.\n2. For every factual claim, cite the source document name and page number in the format [Source: document_name, Page: N].\n3. If the retrieved context is insufficient to answer a question, explicitly state: \"The available literature does not contain sufficient information to answer this question.\"\n4. Decline questions outside the scope of gastroenterology and DGBI. Respond with: \"This question is outside my area of expertise. I am configured to assist with gastroenterology and DGBI-related research only.\"\n5. Provide structured, evidence-based responses suitable for a research audience.",
+        "suggestion_prompts": [
+            {
+                "title": "IBS Diagnostic Criteria",
+                "content": "What are the Rome V diagnostic criteria for IBS?"
+            },
+            {
+                "title": "DGBI Classification",
+                "content": "How has the classification of DGBI evolved from Rome III to Rome V?"
+            },
+            {
+                "title": "Brain-Gut Axis",
+                "content": "Explain the brain-gut interaction mechanisms relevant to functional GI disorders."
+            },
+            {
+                "title": "Questionnaire Validation",
+                "content": "What diagnostic questionnaires have been validated for DGBI assessment?"
+            },
+            {
+                "title": "Functional Dyspepsia",
+                "content": "What are the subtypes of functional dyspepsia and their distinguishing features?"
+            },
+            {
+                "title": "RFGES Epidemiology",
+                "content": "What are the key epidemiological findings from the Rome Foundation Global Epidemiology Study?"
+            }
+        ]
+    },
+    "params": {
+        "temperature": 0.2,
+        "max_tokens": 1024
+    },
+    "is_active": true
+}

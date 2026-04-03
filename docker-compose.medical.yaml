@@ -1,0 +1,24 @@
+services:
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: rome-medical-assistant
+    ports:
+      - "3000:8080"
+    volumes:
+      - open-webui:/app/backend/data
+    environment:
+      - OPENAI_API_BASE_URL=https://api.openai.com/v1
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ENABLE_OLLAMA_API=false
+      - WEBUI_NAME=Rome Medical Assistant
+      - DEFAULT_MODELS=gpt-5.4
+      - ENABLE_IMAGE_GENERATION=false
+      - ENABLE_COMMUNITY_SHARING=false
+      - ENABLE_WEB_SEARCH=false
+      - ENABLE_CODE_INTERPRETER=false
+      - WEBUI_AUTH=true
+      - 'WEBUI_BANNERS=[{"id":"medical-disclaimer","type":"warning","content":"⚕️ Research Tool Only — Responses are generated from indexed medical literature and do not constitute medical advice. Always consult qualified healthcare professionals for clinical decisions.","dismissible":false,"timestamp":0}]'
+    restart: unless-stopped
+
+volumes:
+  open-webui: {}
