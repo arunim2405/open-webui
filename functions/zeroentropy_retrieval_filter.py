@@ -15,6 +15,26 @@ from pydantic import BaseModel
 import re
 
 
+
+
+def extract_page_number(snippet_text: str) -> str:
+    """Extract the page number from the nearest preceding ``<!-- page: N -->`` marker.
+
+    Scans *snippet_text* for all HTML comment page markers and returns the
+    page number from the **last** (i.e. nearest preceding) match.
+
+    Args:
+        snippet_text: The raw snippet text that may contain page markers.
+
+    Returns:
+        The page number as a string, or ``"N/A"`` when no marker is found.
+    """
+    matches = re.findall(r"<!-- page: (\d+) -->", snippet_text)
+    if matches:
+        return matches[-1]
+    return "N/A"
+
+
 def format_snippets(results: list) -> str:
     """Format a list of ZeroEntropy snippet results into numbered context blocks.
 
@@ -34,29 +54,17 @@ def format_snippets(results: list) -> str:
     """
     blocks = []
     for i, result in enumerate(results, start=1):
-        document_path = result.get("document_path", "")
-        snippet_text = result.get("snippet", "")
-        page = extract_page_number(snippet_text)
+        document_path = result.get("path", "")
+        snippet_text = result.get("content", "")
+        page_span = result.get("page_span")
+        if page_span:
+            page = str(page_span[0] + 1) if len(page_span) > 0 else "N/A"
+        else:
+            page = extract_page_number(snippet_text)
         blocks.append(f"[{i}] Source: {document_path}, Page: {page}\n{snippet_text}")
     return "\n\n".join(blocks)
 
 
-def extract_page_number(snippet_text: str) -> str:
-    """Extract the page number from the nearest preceding ``<!-- page: N -->`` marker.
-
-    Scans *snippet_text* for all HTML comment page markers and returns the
-    page number from the **last** (i.e. nearest preceding) match.
-
-    Args:
-        snippet_text: The raw snippet text that may contain page markers.
-
-    Returns:
-        The page number as a string, or ``"N/A"`` when no marker is found.
-    """
-    matches = re.findall(r"<!-- page: (\d+) -->", snippet_text)
-    if matches:
-        return matches[-1]
-    return "N/A"
 
 
 MEDICAL_DISCLAIMER = (
@@ -105,7 +113,7 @@ class Filter:
             }
             payload = {
                 "query": last_user_message,
-                "collection": self.valves.COLLECTION_NAME,
+                "collection_name": self.valves.COLLECTION_NAME,
                 "k": self.valves.SNIPPET_COUNT,
             }
 
@@ -127,15 +135,29 @@ class Filter:
                 # Emit citation events
                 if __event_emitter__:
                     for result in results:
-                        doc_path = result.get("document_path", "")
-                        snippet_text = result.get("snippet", "")
-                        page = extract_page_number(snippet_text)
+                        doc_path = result.get("path", "")
+                        snippet_text = result.get("content", "")
+                        page_span = result.get("page_span")
+                        if page_span:
+                            page = str(page_span[0] + 1) if len(page_span) > 0 else "N/A"
+                        else:
+                            page = extract_page_number(snippet_text)
                         await __event_emitter__(
                             {
                                 "type": "citation",
                                 "data": {
-                                    "source": {"name": doc_path},
-                                    "metadata": {"page": page},
+                                    "source": {
+                                        "name": doc_path,
+                                        "id": doc_path,
+                                    },
+                                    "document": [snippet_text],
+                                    "metadata": [
+                                        {
+                                            "source": doc_path,
+                                            "name": doc_path,
+                                            "page": page,
+                                        }
+                                    ],
                                 },
                             }
                         )
@@ -151,6 +173,12 @@ class Filter:
                         },
                     }
                 )
+
+        import json
+        print("=== INLET FINAL MESSAGES ===")
+        for m in body.get("messages", []):
+            print(f"[{m.get('role')}] {m.get('content', '')[:200]}")
+        print("=== END INLET ===")
 
         return body
 
