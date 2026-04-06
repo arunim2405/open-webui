@@ -7,8 +7,8 @@ services:
     volumes:
       - open-webui:/app/backend/data
     environment:
-      - OPENAI_API_BASE_URL=https://api.openai.com/v1
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # - OPENAI_API_BASE_URL=https://api.openai.com/v1
+      # - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ENABLE_OLLAMA_API=false
       - WEBUI_NAME=Rome Medical Assistant
       - DEFAULT_MODELS=gpt-5.4
