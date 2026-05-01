@@ -6,11 +6,36 @@ version: 0.2.0
 """
 
 import datetime
+import html
 import json
 import re
 
 import aiohttp
 from pydantic import BaseModel
+
+
+def clean_snippet_content(text: str) -> str:
+    """Clean snippet markdown for human-readable display in citations.
+
+    - Strips YAML frontmatter (``---`` block at the start)
+    - Removes HTML comments (e.g. ``<!-- page: 11 -->``)
+    - Decodes HTML entities
+    - Collapses excessive blank lines
+
+    On any error (malformed input, regex failure, etc.) the original text
+    is returned so that citation rendering never breaks.
+    """
+    if not text:
+        return ""
+
+    try:
+        cleaned = re.sub(r"^---\s*\n.*?\n---\s*\n+", "", text, count=1, flags=re.DOTALL)
+        cleaned = re.sub(r"<!--.*?-->", "", cleaned, flags=re.DOTALL)
+        cleaned = html.unescape(cleaned)
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+        return cleaned.strip()
+    except Exception:
+        return text
 
 # Tells Open WebUI to use this tool's manually emitted citations instead of
 # auto-generating a single source from the tool's return value.
@@ -116,7 +141,8 @@ def format_snippets(results: list) -> str:
             page = str(page_span[0] + 1) if len(page_span) > 0 else "N/A"
         else:
             page = extract_page_number(snippet_text)
-        blocks.append(f"[{i}] Source: {document_path}, Page: {page}\n{snippet_text}")
+        cleaned = clean_snippet_content(snippet_text)
+        blocks.append(f"[{i}] Source: {document_path}, Page: {page}\n{cleaned}")
     return "\n\n".join(blocks)
 
 
@@ -129,7 +155,7 @@ class Tools:
         COLLECTION_NAME: str = "markdown_output"
         GCS_BUCKET: str = "stackguardian-nonprod-rome-uploads"
         GCS_CREDENTIALS_JSON: str = ""
-        SIGNED_URL_TTL_MINUTES: int = 60
+        SIGNED_URL_TTL_MINUTES: int = 10080  # 7 days (max for V4 signed URLs)
 
     def __init__(self):
         self.valves = self.Valves()
@@ -189,7 +215,7 @@ class Tools:
                     }
                 )
 
-                for result in results:
+                for idx, result in enumerate(results):
                     doc_path = result.get("path", "")
                     snippet_text = result.get("content", "")
                     page_span = result.get("page_span")
@@ -205,19 +231,23 @@ class Tools:
                         self.valves.GCS_CREDENTIALS_JSON,
                         self.valves.SIGNED_URL_TTL_MINUTES,
                     )
+                    cleaned_snippet = clean_snippet_content(snippet_text)
+                    # Append snippet index so multiple snippets from the same
+                    # document don't get deduped into one citation badge
+                    unique_source_id = f"{doc_path}#{idx}"
                     await __event_emitter__(
                         {
                             "type": "citation",
                             "data": {
                                 "source": {
                                     "name": friendly_name,
-                                    "id": doc_path,
+                                    "id": unique_source_id,
                                     "url": pdf_url,
                                 },
-                                "document": [snippet_text],
+                                "document": [cleaned_snippet],
                                 "metadata": [
                                     {
-                                        "source": doc_path,
+                                        "source": unique_source_id,
                                         "name": friendly_name,
                                         "page": page,
                                     }
