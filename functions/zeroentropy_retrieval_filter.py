@@ -231,7 +231,7 @@ class Filter:
                                     "document": [snippet_text],
                                     "metadata": [
                                         {
-                                            "source": pdf_url,
+                                            "source": doc_path,
                                             "name": friendly_name,
                                             "page": page,
                                             "html": False,

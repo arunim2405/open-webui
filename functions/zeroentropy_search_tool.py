@@ -12,6 +12,10 @@ import re
 import aiohttp
 from pydantic import BaseModel
 
+# Tells Open WebUI to use this tool's manually emitted citations instead of
+# auto-generating a single source from the tool's return value.
+citation = True
+
 
 def humanize_document_name(path: str) -> str:
     """Convert a document path into a human-friendly title."""
@@ -199,7 +203,7 @@ class Tools:
                     )
                     await __event_emitter__(
                         {
-                            "type": "source",
+                            "type": "citation",
                             "data": {
                                 "source": {
                                     "name": friendly_name,
@@ -209,7 +213,7 @@ class Tools:
                                 "document": [snippet_text],
                                 "metadata": [
                                     {
-                                        "source": pdf_url,
+                                        "source": doc_path,
                                         "name": friendly_name,
                                         "page": page,
                                     }
