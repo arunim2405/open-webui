@@ -19,6 +19,7 @@ CLAUDE.md
 # C extensions
 *.so
 
+terraform/.terraform/*
 # Pyodide distribution
 static/pyodide/*
 !static/pyodide/pyodide-lock.json
