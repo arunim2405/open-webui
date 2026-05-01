@@ -1,17 +1,67 @@
 """
-ZeroEntropy Search Tool for Open WebUI.
-
-An Open WebUI Tool function that the LLM can invoke on-demand to perform
-targeted follow-up searches against the medical literature via ZeroEntropy.
-
-Requirements covered: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8
+title: ZeroEntropy Search Tool
+description: LLM-invokable medical literature search via ZeroEntropy with signed GCS URLs for citations.
+requirements: aiohttp, google-cloud-storage
+version: 0.2.0
 """
+
+import datetime
+import json
+import re
 
 import aiohttp
 from pydantic import BaseModel
 
-import re
 
+def humanize_document_name(path: str) -> str:
+    """Convert a document path into a human-friendly title."""
+    if not path:
+        return ""
+    filename = path.rsplit("/", 1)[-1]
+    filename = re.sub(r"\.(md|pdf)$", "", filename, flags=re.IGNORECASE)
+    filename = re.sub(r"^\d+[_-]", "", filename)
+    return filename.replace("_", " ").strip()
+
+
+def md_path_to_pdf_path(path: str) -> str:
+    """Map a markdown reference path to the original PDF path."""
+    if not path:
+        return ""
+    return re.sub(r"\.md$", ".pdf", path, flags=re.IGNORECASE)
+
+
+def build_signed_url(
+    path: str,
+    bucket: str,
+    credentials_json: str,
+    ttl_minutes: int = 60,
+) -> str:
+    """Generate a V4 signed URL for a GCS object.
+
+    Falls back to the GCS console URL if signing fails.
+    """
+    if not path or not bucket:
+        return ""
+
+    try:
+        from google.cloud import storage
+        from google.oauth2 import service_account
+
+        if credentials_json:
+            info = json.loads(credentials_json)
+            creds = service_account.Credentials.from_service_account_info(info)
+            client = storage.Client(credentials=creds, project=info.get("project_id"))
+        else:
+            client = storage.Client()
+
+        blob = client.bucket(bucket).blob(path)
+        return blob.generate_signed_url(
+            version="v4",
+            expiration=datetime.timedelta(minutes=ttl_minutes),
+            method="GET",
+        )
+    except Exception:
+        return f"https://storage.cloud.google.com/{bucket}/{path}"
 
 
 def extract_page_number(snippet_text: str) -> str:
@@ -69,6 +119,9 @@ class Tools:
         ZEROENTROPY_API_KEY: str = ""
         ZEROENTROPY_BASE_URL: str = "https://api.zeroentropy.dev/v1"
         COLLECTION_NAME: str = "markdown_output"
+        GCS_BUCKET: str = "stackguardian-nonprod-rome-uploads"
+        GCS_CREDENTIALS_JSON: str = ""
+        SIGNED_URL_TTL_MINUTES: int = 60
 
     def __init__(self):
         self.valves = self.Valves()
@@ -136,16 +189,28 @@ class Tools:
                         page = str(page_span[0] + 1) if len(page_span) > 0 else "N/A"
                     else:
                         page = extract_page_number(snippet_text)
+                    friendly_name = humanize_document_name(doc_path)
+                    pdf_path = md_path_to_pdf_path(doc_path)
+                    pdf_url = build_signed_url(
+                        pdf_path,
+                        self.valves.GCS_BUCKET,
+                        self.valves.GCS_CREDENTIALS_JSON,
+                        self.valves.SIGNED_URL_TTL_MINUTES,
+                    )
                     await __event_emitter__(
                         {
                             "type": "source",
                             "data": {
-                                "source": {"name": doc_path},
+                                "source": {
+                                    "name": friendly_name,
+                                    "id": doc_path,
+                                    "url": pdf_url,
+                                },
                                 "document": [snippet_text],
                                 "metadata": [
                                     {
-                                        "source": doc_path,
-                                        "name": doc_path,
+                                        "source": pdf_url,
+                                        "name": friendly_name,
                                         "page": page,
                                     }
                                 ],

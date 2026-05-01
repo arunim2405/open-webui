@@ -1,0 +1,26 @@
+# Copy to terraform.tfvars and fill in values
+# NEVER commit terraform.tfvars — it contains secrets
+
+project_id = "your-gcp-project-id"
+region     = "europe-west1"
+zone       = "europe-west1-b"
+domain     = "openwebui.example.com"
+
+# Database
+db_password = "CHANGE_ME_strong_password_here"
+
+# Application secrets
+webui_secret_key    = "CHANGE_ME_random_secret"
+zeroentropy_api_key = "ze_CHANGE_ME"
+
+# ZeroEntropy
+zeroentropy_collection = "markdown_output"
+
+# Cloud Run sizing
+cloud_run_cpu           = "2"
+cloud_run_memory        = "2Gi"
+cloud_run_min_instances = 1
+cloud_run_max_instances = 4
+
+# Docker image (leave empty to use default Artifact Registry path)
+open_webui_image = ""

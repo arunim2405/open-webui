@@ -1,20 +1,86 @@
 """
-ZeroEntropy Retrieval Filter for Open WebUI.
-
-An Open WebUI Filter function that automatically retrieves relevant medical
-literature passages from ZeroEntropy for every user query (inlet) and appends
-a medical disclaimer to every assistant response (outlet).
-
-Requirements covered: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 2.10, 2.11, 6.2
+title: ZeroEntropy Retrieval Filter
+description: Retrieves medical literature from ZeroEntropy and injects as context, with signed GCS URLs for citations.
+requirements: aiohttp, google-cloud-storage
+version: 0.2.0
 """
 
 from typing import Optional
+import datetime
+import json
+import re
+
 import aiohttp
 from pydantic import BaseModel
 
-import re
+
+def humanize_document_name(path: str) -> str:
+    """Convert a document path into a human-friendly title.
+
+    Strips folder, leading numeric prefix, and ``.md`` extension, then
+    replaces underscores with spaces.
+
+    Example::
+
+        "2_Foo_references/0003_Irritable_bowel_syndrome.md"
+        -> "Irritable bowel syndrome"
+    """
+    if not path:
+        return ""
+    filename = path.rsplit("/", 1)[-1]
+    filename = re.sub(r"\.(md|pdf)$", "", filename, flags=re.IGNORECASE)
+    filename = re.sub(r"^\d+[_-]", "", filename)
+    return filename.replace("_", " ").strip()
 
 
+def md_path_to_pdf_path(path: str) -> str:
+    """Map a markdown reference path to the original PDF path."""
+    if not path:
+        return ""
+    return re.sub(r"\.md$", ".pdf", path, flags=re.IGNORECASE)
+
+
+def build_signed_url(
+    path: str,
+    bucket: str,
+    credentials_json: str,
+    ttl_minutes: int = 60,
+) -> str:
+    """Generate a V4 signed URL for a GCS object.
+
+    Args:
+        path: The object key inside the bucket (e.g. ``foo/bar.pdf``).
+        bucket: The GCS bucket name.
+        credentials_json: Service account key JSON as a string. If empty,
+            uses Application Default Credentials (must support signBlob).
+        ttl_minutes: How long the URL stays valid (default 60).
+
+    Returns:
+        A signed HTTPS URL, or empty string if generation fails.
+    """
+    if not path or not bucket:
+        return ""
+
+    try:
+        from google.cloud import storage
+        from google.oauth2 import service_account
+
+        if credentials_json:
+            info = json.loads(credentials_json)
+            creds = service_account.Credentials.from_service_account_info(info)
+            client = storage.Client(credentials=creds, project=info.get("project_id"))
+        else:
+            client = storage.Client()
+
+        blob = client.bucket(bucket).blob(path)
+        return blob.generate_signed_url(
+            version="v4",
+            expiration=datetime.timedelta(minutes=ttl_minutes),
+            method="GET",
+        )
+    except Exception:
+        # Fallback to console URL — works if user is authenticated to GCP project
+        return f"https://storage.cloud.google.com/{bucket}/{path}"
 
 
 def extract_page_number(snippet_text: str) -> str:
@@ -84,6 +150,9 @@ class Filter:
         ZEROENTROPY_BASE_URL: str = "https://api.zeroentropy.dev/v1"
         COLLECTION_NAME: str = "markdown_output"
         SNIPPET_COUNT: int = 5
+        GCS_BUCKET: str = "stackguardian-nonprod-rome-uploads"
+        GCS_CREDENTIALS_JSON: str = ""
+        SIGNED_URL_TTL_MINUTES: int = 60
         priority: int = 0
 
     def __init__(self):
@@ -142,20 +211,30 @@ class Filter:
                             page = str(page_span[0] + 1) if len(page_span) > 0 else "N/A"
                         else:
                             page = extract_page_number(snippet_text)
+                        friendly_name = humanize_document_name(doc_path)
+                        pdf_path = md_path_to_pdf_path(doc_path)
+                        pdf_url = build_signed_url(
+                            pdf_path,
+                            self.valves.GCS_BUCKET,
+                            self.valves.GCS_CREDENTIALS_JSON,
+                            self.valves.SIGNED_URL_TTL_MINUTES,
+                        )
                         await __event_emitter__(
                             {
                                 "type": "citation",
                                 "data": {
                                     "source": {
-                                        "name": doc_path,
+                                        "name": friendly_name,
                                         "id": doc_path,
+                                        "url": pdf_url,
                                     },
                                     "document": [snippet_text],
                                     "metadata": [
                                         {
-                                            "source": doc_path,
-                                            "name": doc_path,
+                                            "source": pdf_url,
+                                            "name": friendly_name,
                                             "page": page,
+                                            "html": False,
                                         }
                                     ],
                                 },

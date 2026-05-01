@@ -20,7 +20,6 @@ resource "google_storage_bucket" "uploads" {
     }
   }
 }
-
 # ---------- Artifact Registry ----------
 
 resource "google_artifact_registry_repository" "registry" {

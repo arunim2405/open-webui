@@ -17,6 +17,7 @@ services:
       - ENABLE_WEB_SEARCH=false
       - ENABLE_CODE_INTERPRETER=false
       - WEBUI_AUTH=true
+      - ENABLE_PIP_INSTALL_FRONTMATTER_REQUIREMENTS=true
       - 'WEBUI_BANNERS=[{"id":"medical-disclaimer","type":"warning","content":"⚕️ Research Tool Only — Responses are generated from indexed medical literature and do not constitute medical advice. Always consult qualified healthcare professionals for clinical decisions.","dismissible":false,"timestamp":0}]'
     restart: unless-stopped
 
