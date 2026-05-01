@@ -18,13 +18,17 @@ citation = True
 
 
 def humanize_document_name(path: str) -> str:
-    """Convert a document path into a human-friendly title."""
+    """Convert a document path into a human-friendly title.
+
+    Appends an ellipsis since titles are often truncated mid-sentence.
+    """
     if not path:
         return ""
     filename = path.rsplit("/", 1)[-1]
     filename = re.sub(r"\.(md|pdf)$", "", filename, flags=re.IGNORECASE)
     filename = re.sub(r"^\d+[_-]", "", filename)
-    return filename.replace("_", " ").strip()
+    cleaned = filename.replace("_", " ").strip()
+    return f"{cleaned}..." if cleaned else ""
 
 
 def md_path_to_pdf_path(path: str) -> str:

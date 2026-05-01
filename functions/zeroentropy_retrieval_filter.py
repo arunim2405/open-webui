@@ -18,19 +18,21 @@ def humanize_document_name(path: str) -> str:
     """Convert a document path into a human-friendly title.
 
     Strips folder, leading numeric prefix, and ``.md`` extension, then
-    replaces underscores with spaces.
+    replaces underscores with spaces. Appends an ellipsis since titles
+    are often truncated mid-sentence.
 
     Example::
 
         "2_Foo_references/0003_Irritable_bowel_syndrome.md"
-        -> "Irritable bowel syndrome"
+        -> "Irritable bowel syndrome..."
     """
     if not path:
         return ""
     filename = path.rsplit("/", 1)[-1]
     filename = re.sub(r"\.(md|pdf)$", "", filename, flags=re.IGNORECASE)
     filename = re.sub(r"^\d+[_-]", "", filename)
-    return filename.replace("_", " ").strip()
+    cleaned = filename.replace("_", " ").strip()
+    return f"{cleaned}..." if cleaned else ""
 
 
 def md_path_to_pdf_path(path: str) -> str:
