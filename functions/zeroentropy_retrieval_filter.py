@@ -42,21 +42,47 @@ def humanize_document_name(path: str) -> str:
     """Convert a document path into a human-friendly title.
 
     Strips folder, leading numeric prefix, and ``.md`` extension, then
-    replaces underscores with spaces. Appends an ellipsis since titles
-    are often truncated mid-sentence.
+    replaces underscores with spaces.
 
     Example::
 
         "2_Foo_references/0003_Irritable_bowel_syndrome.md"
-        -> "Irritable bowel syndrome..."
+        -> "Irritable bowel syndrome"
     """
     if not path:
         return ""
     filename = path.rsplit("/", 1)[-1]
     filename = re.sub(r"\.(md|pdf)$", "", filename, flags=re.IGNORECASE)
     filename = re.sub(r"^\d+[_-]", "", filename)
-    cleaned = filename.replace("_", " ").strip()
-    return f"{cleaned}..." if cleaned else ""
+    return filename.replace("_", " ").strip()
+
+
+def build_unique_citation_name(friendly_name: str, page: str, used_names: set) -> str:
+    """Build a citation display name that is unique within a single response.
+
+    The Open WebUI frontend de-duplicates inline citation badges by *name*
+    (``[...new Set(names)]`` in ContentRenderer) and then indexes that list
+    positionally by the ``[N]`` marker the model emits. When several snippets
+    come from the same document they share ``friendly_name``, the Set collapses
+    them, and every marker past the first renders as "undefined". Disambiguating
+    by page keeps the label meaningful; an ordinal suffix guarantees uniqueness
+    when the same document *and* page recur. The returned name is added to
+    *used_names* so subsequent calls avoid it.
+    """
+    name = friendly_name or "Source"
+    parts = []
+    if page and page != "N/A":
+        parts.append(f"p. {page}")
+
+    label = f"{name} ({', '.join(parts)})" if parts else name
+    counter = 2
+    while label in used_names:
+        extra = parts + [f"#{counter}"]
+        label = f"{name} ({', '.join(extra)})"
+        counter += 1
+
+    used_names.add(label)
+    return label
 
 
 def md_path_to_pdf_path(path: str) -> str:
@@ -230,6 +256,7 @@ class Filter:
 
                 # Emit citation events
                 if __event_emitter__:
+                    used_names: set = set()
                     for idx, result in enumerate(results):
                         doc_path = result.get("path", "")
                         snippet_text = result.get("content", "")
@@ -239,6 +266,10 @@ class Filter:
                         else:
                             page = extract_page_number(snippet_text)
                         friendly_name = humanize_document_name(doc_path)
+                        # Make the display name unique per snippet so the frontend's
+                        # name-based de-duplication doesn't collapse same-document
+                        # snippets and render later citations as "undefined".
+                        citation_name = build_unique_citation_name(friendly_name, page, used_names)
                         pdf_path = md_path_to_pdf_path(doc_path)
                         pdf_url = build_signed_url(
                             pdf_path,
@@ -255,7 +286,7 @@ class Filter:
                                 "type": "citation",
                                 "data": {
                                     "source": {
-                                        "name": friendly_name,
+                                        "name": citation_name,
                                         "id": unique_source_id,
                                         "url": pdf_url,
                                     },
@@ -263,7 +294,7 @@ class Filter:
                                     "metadata": [
                                         {
                                             "source": unique_source_id,
-                                            "name": friendly_name,
+                                            "name": citation_name,
                                             "page": page,
                                             "html": False,
                                         }
