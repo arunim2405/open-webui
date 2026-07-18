@@ -74,6 +74,7 @@ class SignupForm(BaseModel):
     email: str
     password: str
     profile_image_url: Optional[str] = '/user.png'
+    signup_code: Optional[str] = None
 
     @field_validator('profile_image_url')
     @classmethod
