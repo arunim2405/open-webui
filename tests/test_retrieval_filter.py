@@ -523,3 +523,126 @@ class TestRetrievalFilterSnippetsWithoutPageMarkers:
         ]
         assert len(citation_calls) == 1
         assert citation_calls[0].args[0]['data']['metadata'][0]['page'] == 'N/A'
+
+
+# ---------------------------------------------------------------------------
+# Feature: medical-rag-chatbot, Bugfix: unique citation names
+# Ensures same-document snippets get distinct display names so the frontend's
+# name-based Set de-duplication cannot collapse them and render later inline
+# citation markers (e.g. [2][3]) as "undefined".
+# ---------------------------------------------------------------------------
+
+from functions.zeroentropy_retrieval_filter import (
+    build_unique_citation_name,
+    humanize_document_name,
+)
+
+
+class TestHumanizeDocumentName:
+    """The humanized title must NOT append a trailing ellipsis.
+
+    The frontend's getDisplayTitle already truncates long names with its own
+    "...", so an ellipsis from our side stacked on top of it, producing the
+    "Alterations in ...... (p. 3)" double-ellipsis in citation pills.
+    """
+
+    def test_no_trailing_ellipsis(self):
+        name = humanize_document_name('2_Foo_references/0003_Irritable_bowel_syndrome.md')
+        assert name == 'Irritable bowel syndrome'
+        assert not name.endswith('...')
+
+    def test_empty_path_returns_empty(self):
+        assert humanize_document_name('') == ''
+
+
+def _simulate_frontend_source_ids(citation_events):
+    """Reproduce ContentRenderer.getSourceIds: one entry per source document,
+    keyed on metadata.name, then de-duplicated the way JS ``new Set`` does
+    (order-preserving). Returns the positional list the inline ``[N]`` badge
+    indexes into via ``sourceIds[N - 1]``.
+    """
+    result = []
+    for event in citation_events:
+        data = event['data']
+        for index in range(len(data.get('document', []))):
+            metadata = data['metadata'][index]
+            result.append(metadata.get('name'))
+    return list(dict.fromkeys(result))  # dict preserves insertion order like Set
+
+
+class TestUniqueCitationName:
+    """Unit tests for the build_unique_citation_name helper."""
+
+    def test_page_is_appended_when_known(self):
+        used = set()
+        assert build_unique_citation_name('Doc...', '3', used) == 'Doc... (p. 3)'
+
+    def test_no_page_leaves_name_unchanged(self):
+        used = set()
+        assert build_unique_citation_name('Doc...', 'N/A', used) == 'Doc...'
+
+    def test_same_document_same_page_gets_ordinal_suffix(self):
+        used = set()
+        first = build_unique_citation_name('Doc...', '3', used)
+        second = build_unique_citation_name('Doc...', '3', used)
+        third = build_unique_citation_name('Doc...', '3', used)
+        assert [first, second, third] == ['Doc... (p. 3)', 'Doc... (p. 3, #2)', 'Doc... (p. 3, #3)']
+
+    def test_collision_without_page_uses_bare_ordinal(self):
+        used = set()
+        first = build_unique_citation_name('Doc...', 'N/A', used)
+        second = build_unique_citation_name('Doc...', 'N/A', used)
+        assert [first, second] == ['Doc...', 'Doc... (#2)']
+
+    def test_empty_name_falls_back(self):
+        used = set()
+        assert build_unique_citation_name('', 'N/A', used) == 'Source'
+
+
+class TestCitationNamesUniqueInResponse:
+    """Integration: inlet must emit distinct names for same-document snippets."""
+
+    @pytest.mark.asyncio
+    async def test_same_document_snippets_get_unique_names(self):
+        """Reproduces the real bug: 5 snippets from one paper, pages [1,3,4,3,3].
+
+        Before the fix all five shared one name, the frontend Set collapsed them
+        to length 1, and markers [2]..[5] rendered "undefined". After the fix the
+        names are distinct and the positional lookup resolves for every marker.
+        """
+        doc = '8_Psychosocial Aspects of DGBI_references/0211_Alterations_in_fecal_SCFA.md'
+        pages = [1, 3, 4, 3, 3]
+        # Current filter contract reads `path` / `content` (not document_path/snippet)
+        results = [
+            {'path': doc, 'content': f'chunk {i} <!-- page: {p} -->'}
+            for i, p in enumerate(pages)
+        ]
+        mock_resp = _make_mock_response(results)
+        mock_session = _make_mock_session(mock_resp)
+
+        emitter = AsyncMock()
+        f = Filter()
+        body = {'messages': [{'role': 'user', 'content': 'evidence for SCFA in IBS'}]}
+
+        with patch('functions.zeroentropy_retrieval_filter.aiohttp.ClientSession', return_value=mock_session):
+            await f.inlet(body, __event_emitter__=emitter)
+
+        citation_events = [
+            call.args[0] for call in emitter.call_args_list
+            if call.args and call.args[0].get('type') == 'citation'
+        ]
+        assert len(citation_events) == len(pages)
+
+        names = [e['data']['metadata'][0]['name'] for e in citation_events]
+        # Every emitted display name must be distinct
+        assert len(set(names)) == len(names), names
+        # source.name and metadata.name must agree (both drive frontend display)
+        for e in citation_events:
+            assert e['data']['source']['name'] == e['data']['metadata'][0]['name']
+
+        # End-to-end: the frontend's Set-dedup keeps all entries, so every
+        # inline marker [1]..[N] resolves to a real name (no "undefined").
+        source_ids = _simulate_frontend_source_ids(citation_events)
+        assert len(source_ids) == len(pages)
+        for marker in range(1, len(pages) + 1):
+            assert source_ids[marker - 1] is not None
