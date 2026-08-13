@@ -402,3 +402,97 @@ class TestSearchToolUnit:
 
         assert 'Page: N/A' in output
         assert 'plain_doc.md' in output
+
+
+# ---------------------------------------------------------------------------
+# Feature: medical-rag-chatbot, Bugfix: unique citation names (search tool)
+# Same fix as the retrieval filter: same-document snippets must get distinct
+# display names so the frontend's name-based Set de-duplication cannot collapse
+# them and render later inline citation markers ([2][3]) as "undefined".
+# ---------------------------------------------------------------------------
+
+from functions.zeroentropy_search_tool import (
+    build_unique_citation_name,
+    humanize_document_name,
+)
+
+
+def _simulate_frontend_source_ids(citation_events):
+    """Reproduce ContentRenderer.getSourceIds: one entry per source document
+    keyed on metadata.name, de-duplicated the way JS ``new Set`` does
+    (order-preserving). Returns the list the inline ``[N]`` badge indexes via
+    ``sourceIds[N - 1]``.
+    """
+    result = []
+    for event in citation_events:
+        data = event['data']
+        for index in range(len(data.get('document', []))):
+            result.append(data['metadata'][index].get('name'))
+    return list(dict.fromkeys(result))
+
+
+class TestSearchToolHumanizeDocumentName:
+    """The search tool's humanized title must not append a trailing ellipsis."""
+
+    def test_no_trailing_ellipsis(self):
+        name = humanize_document_name('3_Foo_references/0009_Bowel_Disorders.md')
+        assert name == 'Bowel Disorders'
+        assert not name.endswith('...')
+
+
+class TestSearchToolUniqueCitationName:
+    """Unit tests for the ported build_unique_citation_name helper."""
+
+    def test_page_appended_when_known(self):
+        used = set()
+        assert build_unique_citation_name('Doc', '3', used) == 'Doc (p. 3)'
+
+    def test_same_document_same_page_gets_ordinal(self):
+        used = set()
+        a = build_unique_citation_name('Doc', '3', used)
+        b = build_unique_citation_name('Doc', '3', used)
+        assert [a, b] == ['Doc (p. 3)', 'Doc (p. 3, #2)']
+
+
+class TestSearchToolCitationNamesUniqueInResponse:
+    """Integration: search tool must emit distinct names for same-document snippets."""
+
+    @pytest.mark.asyncio
+    async def test_same_document_snippets_get_unique_names(self):
+        """5 snippets from one paper, pages [1,3,4,3,3]: names must be distinct
+        and every inline marker [1]..[N] must resolve (no "undefined")."""
+        doc = '4_Intestinal Microenvironment_references/0447_Alterations_in_fecal_SCFA.md'
+        pages = [1, 3, 4, 3, 3]
+        results = [
+            {'path': doc, 'content': f'chunk {i} <!-- page: {p} -->'}
+            for i, p in enumerate(pages)
+        ]
+        mock_resp = _make_mock_response(results)
+        mock_session = _make_mock_session(mock_resp)
+
+        emitter = AsyncMock()
+        tool = Tools()
+
+        with patch(
+            'functions.zeroentropy_search_tool.aiohttp.ClientSession',
+            return_value=mock_session,
+        ):
+            await tool.search_medical_literature(
+                query='SCFA in IBS', k=5, __event_emitter__=emitter
+            )
+
+        citation_events = [
+            call.args[0] for call in emitter.call_args_list
+            if call.args and call.args[0].get('type') == 'citation'
+        ]
+        assert len(citation_events) == len(pages)
+
+        names = [e['data']['metadata'][0]['name'] for e in citation_events]
+        assert len(set(names)) == len(names), names
+        for e in citation_events:
+            assert e['data']['source']['name'] == e['data']['metadata'][0]['name']
+
+        source_ids = _simulate_frontend_source_ids(citation_events)
+        assert len(source_ids) == len(pages)
+        for marker in range(1, len(pages) + 1):
+            assert source_ids[marker - 1] is not None

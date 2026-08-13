@@ -39,6 +39,7 @@
 	let email = '';
 	let password = '';
 	let confirmPassword = '';
+	let signupCode = '';
 
 	let ldapUsername = '';
 
@@ -85,12 +86,16 @@
 			}
 		}
 
-		const sessionUser = await userSignUp(name, email, password, generateInitialsImage(name)).catch(
-			(error) => {
-				toast.error(`${error}`);
-				return null;
-			}
-		);
+		const sessionUser = await userSignUp(
+			name,
+			email,
+			password,
+			generateInitialsImage(name),
+			signupCode ? signupCode : null
+		).catch((error) => {
+			toast.error(`${error}`);
+			return null;
+		});
 
 		await setSessionUser(sessionUser);
 	};
@@ -291,6 +296,23 @@
 													class="my-0.5 w-full text-sm outline-hidden bg-transparent placeholder:text-gray-300 dark:placeholder:text-gray-600"
 													autocomplete="name"
 													placeholder={$i18n.t('Enter Your Full Name')}
+													required
+												/>
+											</div>
+										{/if}
+
+										{#if mode === 'signup' && !($config?.onboarding ?? false)}
+											<div class="mb-2">
+												<label for="invite-code" class="text-sm font-medium text-left mb-1 block"
+													>{$i18n.t('Invite Code')}</label
+												>
+												<input
+													bind:value={signupCode}
+													type="text"
+													id="invite-code"
+													class="my-0.5 w-full text-sm outline-hidden bg-transparent placeholder:text-gray-300 dark:placeholder:text-gray-600"
+													autocomplete="off"
+													placeholder={$i18n.t('Enter Your Invite Code')}
 													required
 												/>
 											</div>

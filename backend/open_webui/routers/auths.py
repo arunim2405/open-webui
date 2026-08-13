@@ -28,6 +28,7 @@ from open_webui.models.users import (
 )
 from open_webui.models.groups import Groups
 from open_webui.models.oauth_sessions import OAuthSessions
+from open_webui.models.signup_codes import SignupCodes
 
 from open_webui.constants import ERROR_MESSAGES, WEBHOOK_MESSAGES
 from open_webui.env import (
@@ -733,14 +734,39 @@ async def signup(
         except Exception as e:
             raise HTTPException(400, detail=str(e))
 
-        user = await signup_handler(
-            request,
-            form_data.email,
-            form_data.password,
-            form_data.name,
-            form_data.profile_image_url,
-            db=db,
-        )
+        # Every non-first signup must consume an unused invite code. The claim is
+        # an atomic guarded UPDATE, so a code can never be spent twice. Missing,
+        # malformed, unknown, and used codes share one message to prevent probing.
+        signup_code = None
+        if has_users:
+            signup_code = (form_data.signup_code or '').strip().upper()
+            if not re.fullmatch(r'[A-Z0-9]{9}', signup_code) or not SignupCodes.claim_code(signup_code, db=db):
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    detail='Invalid or already used signup code',
+                )
+
+        try:
+            user = await signup_handler(
+                request,
+                form_data.email,
+                form_data.password,
+                form_data.name,
+                form_data.profile_image_url,
+                db=db,
+            )
+        except Exception:
+            # Compensation: the code was claimed but no user exists; free it again.
+            if signup_code:
+                try:
+                    SignupCodes.release_code(signup_code, db=db)
+                except Exception as release_err:
+                    log.error(f'Failed to release signup code after failed signup: {release_err}')
+            raise
+
+        if signup_code:
+            SignupCodes.assign_code_user(signup_code, user.id, db=db)
+
         return create_session_response(request, user, db, response, set_cookie=True)
     except HTTPException:
         raise

@@ -32,10 +32,11 @@
 
 	const getDisplayTitle = (title: string) => {
 		if (!title) return 'N/A';
-		if (title.length > 30) {
-			return title.slice(0, 15) + '...' + title.slice(-10);
-		}
-		return title;
+		// Favor the title: head-truncate with a single ellipsis so the start of the
+		// name is always shown. A trailing "(p. N)" tag naturally drops off when the
+		// title is long, which is preferred over letting it crowd out the title.
+		const MAX_LENGTH = 40;
+		return title.length > MAX_LENGTH ? title.slice(0, MAX_LENGTH - 1).trimEnd() + '…' : title;
 	};
 </script>
 
