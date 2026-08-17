@@ -84,6 +84,20 @@ resource "google_cloud_run_v2_service" "openwebui" {
         value = var.zeroentropy_collection
       }
 
+      # rome search API — the functions read these as their valve defaults.
+      # Flipping RETRIEVAL_BACKEND to "rome" is the cutover (docs/runbooks/cutover.md
+      # in the rome-ingestion-search repo); the service account already holds
+      # roles/run.invoker on rome-search-api.
+      env {
+        name  = "SEARCH_API_URL"
+        value = var.search_api_url
+      }
+
+      env {
+        name  = "RETRIEVAL_BACKEND"
+        value = var.retrieval_backend
+      }
+
       # Disable local embedding model download — using ZeroEntropy for RAG
       env {
         name  = "RAG_EMBEDDING_ENGINE"

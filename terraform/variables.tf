@@ -44,6 +44,18 @@ variable "zeroentropy_collection" {
   default     = "markdown_output"
 }
 
+variable "search_api_url" {
+  description = "Base URL of the rome search API (Cloud Run, IAM-only; invoker binding lives in the rome-ingestion-search repo)"
+  type        = string
+  default     = "https://rome-search-api-3lziri3uha-uc.a.run.app"
+}
+
+variable "retrieval_backend" {
+  description = "Retrieval backend the open-webui functions use: zeroentropy | rome"
+  type        = string
+  default     = "zeroentropy"
+}
+
 variable "open_webui_image" {
   description = "Docker image for Open WebUI (full Artifact Registry path)"
   type        = string
