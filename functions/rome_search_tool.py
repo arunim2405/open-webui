@@ -306,7 +306,8 @@ class Tools:
             )
 
         try:
-            is_rome = self.valves.RETRIEVAL_BACKEND == "rome"
+            # Tolerate stray whitespace/casing from the env var or a saved valve.
+            is_rome = self.valves.RETRIEVAL_BACKEND.strip().lower() == "rome"
             if is_rome:
                 snippets = await search_rome(self.valves, query, k)
                 bucket = self.valves.ROME_GCS_BUCKET

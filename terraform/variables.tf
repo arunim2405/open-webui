@@ -54,6 +54,11 @@ variable "retrieval_backend" {
   description = "Retrieval backend the open-webui functions use: zeroentropy | rome"
   type        = string
   default     = "zeroentropy"
+
+  validation {
+    condition     = contains(["zeroentropy", "rome"], var.retrieval_backend)
+    error_message = "retrieval_backend must be \"zeroentropy\" or \"rome\"."
+  }
 }
 
 variable "open_webui_image" {

@@ -318,7 +318,8 @@ class Filter:
         last_user_message = user_messages[-1].get("content", "")
 
         try:
-            is_rome = self.valves.RETRIEVAL_BACKEND == "rome"
+            # Tolerate stray whitespace/casing from the env var or a saved valve.
+            is_rome = self.valves.RETRIEVAL_BACKEND.strip().lower() == "rome"
             if is_rome:
                 snippets = await search_rome(
                     self.valves, last_user_message, self.valves.SNIPPET_COUNT

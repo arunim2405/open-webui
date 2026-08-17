@@ -4,6 +4,7 @@ Covers the ``RETRIEVAL_BACKEND`` dispatch, the ID-token Authorization header
 sent to the rome search API, and the ``[N] Source: …, Page: …`` context format.
 """
 
+import importlib
 import sys
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -13,6 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import pytest
 
+import functions.rome_search_tool
 from functions.rome_search_filter import Filter
 from functions.rome_search_tool import Tools
 
@@ -184,6 +186,44 @@ class TestRomeSearchTool:
         assert output.startswith('Error searching medical literature: boom')
 
     @pytest.mark.asyncio
+    async def test_http_error_response_returns_graceful_message(self):
+        """A non-200 (e.g. 403 from the IAM front end) is reported, not raised."""
+        tool = self._tool()
+        mock_resp = _make_mock_response([])
+        mock_resp.raise_for_status = MagicMock(
+            side_effect=RuntimeError('403, message=\'Forbidden\'')
+        )
+        mock_session = _make_mock_session(mock_resp)
+
+        with patch('functions.rome_search_tool.aiohttp.ClientSession', return_value=mock_session), \
+                patch('functions.rome_search_tool.fetch_id_token', return_value=ID_TOKEN):
+            output = await tool.search_medical_literature(query='q', k=1)
+
+        assert output.startswith('Error searching medical literature: 403')
+        assert 'could not be completed' in output
+
+    @pytest.mark.asyncio
+    async def test_request_timeout_is_applied(self):
+        """REQUEST_TIMEOUT_SECONDS is passed to aiohttp as a total client timeout."""
+        tool = self._tool(REQUEST_TIMEOUT_SECONDS=12)
+        mock_session = _make_mock_session(_make_mock_response([_rome_result()]))
+
+        with patch('functions.rome_search_tool.aiohttp.ClientSession', return_value=mock_session) as mock_cls, \
+                patch('functions.rome_search_tool.fetch_id_token', return_value=ID_TOKEN):
+            await tool.search_medical_literature(query='q', k=1)
+
+        timeout = (mock_cls.call_args.kwargs or mock_cls.call_args[1])['timeout']
+        assert timeout.total == 12
+
+    @pytest.mark.asyncio
+    async def test_backend_value_is_normalized(self):
+        """Whitespace and casing in the valve still select the rome backend."""
+        tool = self._tool(RETRIEVAL_BACKEND=' Rome\n')
+        _, mock_session, _ = await self._run(tool, [_rome_result()])
+
+        assert _post_url(mock_session) == f'{SEARCH_API_URL}/v1/top-snippets'
+
+    @pytest.mark.asyncio
     async def test_unconfigured_url_returns_graceful_message(self):
         """An empty SEARCH_API_URL fails with a message rather than an unauthenticated call."""
         tool = self._tool(SEARCH_API_URL='')
@@ -199,15 +239,24 @@ class TestRomeSearchTool:
 class TestZeroEntropyBackendDispatch:
     """The default backend keeps the existing ZeroEntropy behaviour."""
 
-    @pytest.mark.asyncio
-    async def test_default_backend_is_zeroentropy(self):
-        """Without an env override the valve default is zeroentropy."""
-        assert Tools().valves.RETRIEVAL_BACKEND == 'zeroentropy'
+    def test_default_backend_is_zeroentropy(self, monkeypatch):
+        """With no RETRIEVAL_BACKEND in the environment the valve default is zeroentropy.
+
+        The default is read at import time, so the module is reloaded with the
+        variable unset — otherwise a shell that exports it fails this test.
+        """
+        monkeypatch.delenv('RETRIEVAL_BACKEND', raising=False)
+        module = importlib.reload(functions.rome_search_tool)
+        try:
+            assert module.Tools().valves.RETRIEVAL_BACKEND == 'zeroentropy'
+        finally:
+            importlib.reload(module)
 
     @pytest.mark.asyncio
     async def test_zeroentropy_request_uses_api_key(self):
         """The ZeroEntropy path posts to its own endpoint with the API key."""
         tool = Tools()
+        tool.valves.RETRIEVAL_BACKEND = 'zeroentropy'
         tool.valves.ZEROENTROPY_API_KEY = 'ze-test-key'
         mock_session = _make_mock_session(_make_mock_response([]))
 
@@ -227,6 +276,7 @@ class TestZeroEntropyBackendDispatch:
     async def test_zeroentropy_page_span_is_one_based_in_output(self):
         """ZeroEntropy's zero-based page_span still renders as a one-based page."""
         tool = Tools()
+        tool.valves.RETRIEVAL_BACKEND = 'zeroentropy'
         results = [{'path': 'docs/a.md', 'content': 'body', 'page_span': [10, 11]}]
         mock_session = _make_mock_session(_make_mock_response(results))
 
