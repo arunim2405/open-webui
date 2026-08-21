@@ -16,9 +16,15 @@ resource "google_cloud_run_v2_service" "openwebui" {
       max_instance_count = var.cloud_run_max_instances
     }
 
+    # Direct VPC egress (replaced the rome-connector: its use was denied by an
+    # org-side policy layer as of 2026-08; private-IP DB stays reachable, public
+    # egress goes direct from Cloud Run instead of via NAT).
     vpc_access {
-      connector = google_vpc_access_connector.connector.id
-      egress    = "ALL_TRAFFIC"
+      egress = "PRIVATE_RANGES_ONLY"
+      network_interfaces {
+        network    = google_compute_network.vpc.id
+        subnetwork = google_compute_subnetwork.private.id
+      }
     }
 
     volumes {
