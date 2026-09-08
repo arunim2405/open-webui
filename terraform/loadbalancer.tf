@@ -34,11 +34,19 @@ resource "google_compute_url_map" "default" {
 
 # ---------- SSL Certificate ----------
 
+# The name is derived from the domain so a domain change creates a new
+# certificate rather than replacing one in place; create_before_destroy then
+# attaches the new cert to the proxy before the old one is deleted. A fixed
+# name would make Terraform destroy the in-use cert first, which fails.
 resource "google_compute_managed_ssl_certificate" "default" {
-  name = "rome-ssl-cert"
+  name = "rome-ssl-cert-${replace(var.domain, ".", "-")}"
 
   managed {
     domains = [var.domain]
+  }
+
+  lifecycle {
+    create_before_destroy = true
   }
 }
 
