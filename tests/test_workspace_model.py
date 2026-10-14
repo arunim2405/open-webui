@@ -96,7 +96,7 @@ class TestWorkspaceModelFilterIds:
     """Validates: Requirement 4.3"""
 
     def test_filter_ids_contains_retrieval_filter(self, model):
-        assert "zeroentropy-retrieval-filter" in model["meta"]["filterIds"]
+        assert "rome_search_filter" in model["meta"]["filterIds"]
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +107,7 @@ class TestWorkspaceModelToolIds:
     """Validates: Requirement 4.4"""
 
     def test_tool_ids_contains_search_tool(self, model):
-        assert "zeroentropy-search-tool" in model["meta"]["toolIds"]
+        assert "rome_search_tool" in model["meta"]["toolIds"]
 
 
 # ---------------------------------------------------------------------------
