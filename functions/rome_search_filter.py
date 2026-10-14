@@ -2,7 +2,7 @@
 title: Rome Retrieval Filter
 description: Retrieves medical literature context for every query. Dispatches to the rome search API or ZeroEntropy depending on RETRIEVAL_BACKEND, with signed GCS URLs for citations.
 requirements: aiohttp, google-cloud-storage, google-auth
-version: 0.1.0
+version: 0.2.0
 """
 
 import asyncio
@@ -80,6 +80,20 @@ def build_unique_citation_name(friendly_name: str, page: str, used_names: set) -
 
     used_names.add(label)
     return label
+
+
+def shorten_title(title: str, limit: int = 90) -> str:
+    """Cut *title* to at most *limit* characters at a word boundary, ending in an ellipsis."""
+    if len(title) <= limit:
+        return title
+    cut = title[: limit - 1].rsplit(" ", 1)[0].rstrip(" ,;:-")
+    return f"{cut}…"
+
+
+def citation_label(snippet: dict) -> str:
+    """Badge name for a snippet: its document title when known, else the humanized file name."""
+    title = snippet.get("title", "")
+    return shorten_title(title) if title else humanize_document_name(snippet.get("path", ""))
 
 
 def md_path_to_pdf_path(path: str) -> str:
@@ -187,6 +201,8 @@ def normalize_rome_results(results: list) -> list:
                 "content": result.get("text", ""),
                 "page": str(page_start) if page_start is not None else "N/A",
                 "object_path": f"raw/{document_path}" if document_path else "",
+                "title": (result.get("title") or "").strip(),
+                "doi": result.get("doi") or "",
             }
         )
     return snippets
@@ -197,7 +213,7 @@ def format_snippets(snippets: list) -> str:
 
     Each snippet is formatted as::
 
-        [N] Source: {path}, Page: {page}
+        [N] Source: {title or path}, Page: {page}[, DOI: {doi}]
         {content}
 
     Blocks are joined with double newlines.
@@ -205,9 +221,11 @@ def format_snippets(snippets: list) -> str:
     blocks = []
     for i, snippet in enumerate(snippets, start=1):
         cleaned = clean_snippet_content(snippet.get("content", ""))
+        source = snippet.get("title") or snippet.get("path", "")
+        doi = f", DOI: {snippet['doi']}" if snippet.get("doi") else ""
         blocks.append(
-            f"[{i}] Source: {snippet.get('path', '')}, "
-            f"Page: {snippet.get('page', 'N/A')}\n{cleaned}"
+            f"[{i}] Source: {source}, "
+            f"Page: {snippet.get('page', 'N/A')}{doi}\n{cleaned}"
         )
     return "\n\n".join(blocks)
 
@@ -345,7 +363,7 @@ class Filter:
                     for idx, snippet in enumerate(snippets):
                         doc_path = snippet["path"]
                         page = snippet["page"]
-                        friendly_name = humanize_document_name(doc_path)
+                        friendly_name = citation_label(snippet)
                         # Make the display name unique per snippet so the frontend's
                         # name-based de-duplication doesn't collapse same-document
                         # snippets and render later citations as "undefined".
