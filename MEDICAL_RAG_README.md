@@ -55,23 +55,32 @@ On first launch, Open WebUI prompts you to create an admin account. Complete the
 
 1. Go to **Workspace → Functions** in the admin panel.
 2. Click **Create a new function** and select type **Filter**.
-3. Set the function ID to `zeroentropy-retrieval-filter`.
-4. Paste the contents of `functions/zeroentropy_retrieval_filter.py` into the code editor.
-   - Note: you'll need to inline the shared utilities from `functions/zeroentropy_utils.py` (the `extract_page_number` and `format_snippets` functions) at the top of the file, since Open WebUI functions are self-contained.
+3. Set the function ID to `rome_search_filter` (IDs must be valid Python identifiers: underscores, no hyphens).
+4. Paste the contents of `functions/rome_search_filter.py` into the code editor. The file is self-contained; nothing needs inlining.
 5. Save and enable the function.
-6. Click the **Valves** (⚙️) icon and configure:
-   - `ZEROENTROPY_API_KEY`: your ZeroEntropy API key
-   - `ZEROENTROPY_BASE_URL`: `https://api.zeroentropy.dev/v1` (default)
-   - `COLLECTION_NAME`: `markdown_output` (default)
-   - `SNIPPET_COUNT`: `5` (default)
+6. Click the **Valves** (⚙️) icon and set only these fields to **Custom**:
+   - `GCS_CREDENTIALS_JSON`: the `rome-pdf-signer` service account key JSON, used to sign citation links. Without it, links fall back to the GCS console URL, which readers can't open.
+   - `ZEROENTROPY_API_KEY`: your ZeroEntropy API key. It's needed only while `RETRIEVAL_BACKEND` is `zeroentropy`.
+   - Leave everything else on **Default**, above all `RETRIEVAL_BACKEND` and `SEARCH_API_URL`. Their defaults come from the environment variables of the same names. Open WebUI stores only Custom fields, and a stored value overrides the environment, so a Custom `RETRIEVAL_BACKEND` would stop the environment-based switch from working.
 
-### 5. Install the Tool function
+### 5. Install the Tool
 
-1. Go to **Workspace → Functions** and create another function, type **Tool**.
-2. Set the function ID to `zeroentropy-search-tool`.
-3. Paste the contents of `functions/zeroentropy_search_tool.py` (again inlining the shared utils).
+1. Go to **Workspace → Tools** and click **+**.
+2. Set the tool ID to `rome_search_tool`.
+3. Paste the contents of `functions/rome_search_tool.py`.
 4. Save and enable.
-5. Configure Valves with the same ZeroEntropy API key and settings.
+5. Set the same two Valves to **Custom** as for the filter, and leave the rest on **Default**.
+
+### Choosing the retrieval backend
+
+Both plugins call ZeroEntropy or the rome search API, depending on `RETRIEVAL_BACKEND`:
+
+| Variable | Value |
+|---|---|
+| `RETRIEVAL_BACKEND` | `zeroentropy` (default) or `rome` |
+| `SEARCH_API_URL` | the rome search API base URL, needed for `rome` |
+
+With `rome`, the plugins authenticate with a Google ID token from the container's service account, which needs `roles/run.invoker` on the search API. Citations open the source PDF from the corpus bucket (`ROME_GCS_BUCKET`).
 
 ### 6. Create the Workspace Model
 
@@ -81,7 +90,7 @@ On first launch, Open WebUI prompts you to create an admin account. Complete the
    - Base Model: `gpt-5.4`
    - Temperature: `0.2`, Max Tokens: `1024`
    - System prompt: copy from the JSON file
-   - Attach the filter (`zeroentropy-retrieval-filter`) and tool (`zeroentropy-search-tool`)
+   - Attach the filter (`rome_search_filter`) and tool (`rome_search_tool`)
    - Disable vision, image generation, code interpreter, web search
    - Enable tool use
    - Add the 6 prompt suggestions from the JSON file
