@@ -20,6 +20,7 @@
 		settings,
 		showFileNavPath,
 		selectedTerminalId,
+		simplifiedUI,
 		user
 	} from '$lib/stores';
 
@@ -70,7 +71,8 @@
 
 	$: hasMessages = history?.messages && Object.keys(history.messages).length > 0;
 
-	$: showControlsTab = $user?.role === 'admin' || ($user?.permissions?.chat?.controls ?? true);
+	$: showControlsTab =
+		!$simplifiedUI && ($user?.role === 'admin' || ($user?.permissions?.chat?.controls ?? true));
 	$: showFilesTab =
 		!!$selectedTerminalId ||
 		(codeInterpreterEnabled && $config?.code?.interpreter_engine !== 'jupyter');

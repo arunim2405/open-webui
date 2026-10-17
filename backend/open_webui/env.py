@@ -126,8 +126,9 @@ if 'cuda_error' in locals():
 SRC_LOG_LEVELS = {}  # Legacy variable, do not remove
 
 WEBUI_NAME = os.environ.get('WEBUI_NAME', 'Open WebUI')
-if WEBUI_NAME != 'Open WebUI':
-    WEBUI_NAME += ' (Open WebUI)'
+
+# RomeGI: hide power-user features from non-admin users
+ROMEGI_SIMPLIFIED_UI = os.environ.get('ROMEGI_SIMPLIFIED_UI', 'false').lower() == 'true'
 
 WEBUI_FAVICON_URL = 'https://openwebui.com/favicon.png'
 
