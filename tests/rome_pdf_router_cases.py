@@ -14,6 +14,7 @@ from urllib.parse import quote
 # Importing the auth layer loads persistent config, so give it a throwaway migrated SQLite file.
 # Session sharing keeps other test modules (e.g. test_signup_codes.py) on their own sessions.
 os.environ['DATA_DIR'] = tempfile.mkdtemp(prefix='rome-pdf-test-')
+os.environ['STATIC_DIR'] = tempfile.mkdtemp(prefix='rome-pdf-static-')  # config.py rewrites STATIC_DIR at import
 os.environ['DATABASE_URL'] = f'sqlite:///{os.environ["DATA_DIR"]}/webui.db'
 os.environ['DATABASE_ENABLE_SESSION_SHARING'] = 'true'
 os.environ['ENABLE_DB_MIGRATIONS'] = 'true'  # may be inherited as 'false' from the parent test process
