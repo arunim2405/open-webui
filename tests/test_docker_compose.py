@@ -39,9 +39,10 @@ def env_vars(service):
 # --- Requirement 1.1: Image ---
 
 
-def test_image(service):
-    """Req 1.1: Service uses the correct Open WebUI image."""
-    assert service["image"] == "ghcr.io/open-webui/open-webui:main"
+def test_builds_from_fork(service):
+    """Req 1.1: Service builds this fork rather than pulling the stock image."""
+    assert service["build"] == "."
+    assert "image" not in service
 
 
 # --- Requirement 1.12: Port mapping ---
@@ -90,16 +91,29 @@ def test_ollama_disabled(env_vars):
 
 
 def test_webui_name(env_vars):
-    """Req 1.4: WEBUI_NAME is 'Rome Medical Assistant'."""
-    assert env_vars["WEBUI_NAME"] == "Rome Medical Assistant"
+    """Req 1.4: WEBUI_NAME is 'RomeGI'."""
+    assert env_vars["WEBUI_NAME"] == "RomeGI"
 
 
 # --- Requirement 1.5 / 5.5: DEFAULT_MODELS ---
 
 
 def test_default_models(env_vars):
-    """Req 1.5, 5.5: DEFAULT_MODELS is gpt-5.4."""
-    assert env_vars["DEFAULT_MODELS"] == "gpt-5.4"
+    """Req 1.5, 5.5: DEFAULT_MODELS is the Rome model."""
+    assert env_vars["DEFAULT_MODELS"] == "rome-medical-assistant"
+
+
+# --- RomeGI branding ---
+
+
+def test_version_update_check_disabled(env_vars):
+    """RomeGI: no update checks against the upstream GitHub releases."""
+    assert env_vars["ENABLE_VERSION_UPDATE_CHECK"] == "false"
+
+
+def test_simplified_ui_enabled(env_vars):
+    """RomeGI: non-admin users get the simplified UI."""
+    assert env_vars["ROMEGI_SIMPLIFIED_UI"] == "true"
 
 
 # --- Requirement 1.6 / 5.1: Image generation disabled ---
