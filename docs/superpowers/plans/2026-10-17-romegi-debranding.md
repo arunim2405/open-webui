@@ -347,8 +347,11 @@ No code. This task checks the Review Focus list against a real build.
 
 ## Rollout (production, one time)
 
-`DEFAULT_MODELS` and model visibility are persistent DB settings, so the Terraform env change alone does not apply them to the existing production database. After deploying:
+`DEFAULT_MODELS` and model visibility are persistent DB settings, so the Terraform env change alone does not apply them to the existing production database. Once the picker is hidden, users can't switch models themselves. The order below therefore matters: do the Admin Panel steps **before** `ROMEGI_SIMPLIFIED_UI=true` goes live.
 
-1. **Admin Panel → Settings → Models:** set the default model to **Rome Medical Assistant** (`rome-medical-assistant`).
-2. **Admin Panel → Settings → Models → `gpt-5.4`:** set visibility/access to **Private** (admins only) so regular users can't select or fall back to the bare model.
-3. Run the regular-user part of Task 8, steps 2-4, against production.
+1. Deploy the code (Tasks 1-6). `ROMEGI_SIMPLIFIED_UI` defaults to off, so this changes branding only.
+2. **Admin Panel → Settings → Models:** set the default model to **Rome Medical Assistant** (`rome-medical-assistant`).
+3. **Admin Panel → Models → `gpt-5.4`:** make sure regular users cannot see it (Private / admins only). By default, base models with no saved model entry are already hidden from non-admins. Check that nobody has made it public.
+4. Log in as a regular user with the setting still off. Confirm the model picker offers only Rome Medical Assistant.
+5. Only now apply the deploy config (Task 7: Terraform with `ROMEGI_SIMPLIFIED_UI=true`).
+6. Run the regular-user part of Task 8, steps 2-4, against production.
