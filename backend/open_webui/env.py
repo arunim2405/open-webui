@@ -942,3 +942,14 @@ EXTERNAL_PWA_MANIFEST_URL = os.environ.get('EXTERNAL_PWA_MANIFEST_URL')
 # Env var values: "true" (anyone), "false" (no one), "members" (only group members).
 _default_group_share = os.environ.get('DEFAULT_GROUP_SHARE_PERMISSION', 'members').strip().lower()
 DEFAULT_GROUP_SHARE_PERMISSION = 'members' if _default_group_share == 'members' else _default_group_share == 'true'
+
+####################################
+# ROME CORPUS PDF LINKS (sign on click)
+####################################
+
+ROME_GCS_BUCKET = os.environ.get('ROME_GCS_BUCKET', '')
+ROME_PDF_PREFIX = os.environ.get('ROME_PDF_PREFIX', 'raw/')
+ROME_PDF_URL_TTL_MINUTES = int(os.environ.get('ROME_PDF_URL_TTL_MINUTES', '2880'))
+ROME_PDF_SIGNER_EMAIL = os.environ.get('ROME_PDF_SIGNER_EMAIL', '')
+ROME_PDF_SIGNER_CREDENTIALS_JSON = os.environ.get('ROME_PDF_SIGNER_CREDENTIALS_JSON', '')
+ROME_PDF_RATE_LIMIT_PER_MINUTE = int(os.environ.get('ROME_PDF_RATE_LIMIT_PER_MINUTE', '60'))
