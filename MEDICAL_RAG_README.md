@@ -58,10 +58,7 @@ On first launch, Open WebUI prompts you to create an admin account. Complete the
 3. Set the function ID to `rome_search_filter` (IDs must be valid Python identifiers: underscores, no hyphens).
 4. Paste the contents of `functions/rome_search_filter.py` into the code editor. The file is self-contained; nothing needs inlining.
 5. Save and enable the function.
-6. Click the **Valves** (⚙️) icon and set only these fields to **Custom**:
-   - `GCS_CREDENTIALS_JSON`: the `rome-pdf-signer` service account key JSON, used to sign citation links. Without it, links fall back to the GCS console URL, which readers can't open.
-   - `ZEROENTROPY_API_KEY`: your ZeroEntropy API key. It's needed only while `RETRIEVAL_BACKEND` is `zeroentropy`.
-   - Leave everything else on **Default**, above all `RETRIEVAL_BACKEND` and `SEARCH_API_URL`. Their defaults come from the environment variables of the same names. Open WebUI stores only Custom fields, and a stored value overrides the environment, so a Custom `RETRIEVAL_BACKEND` would stop the environment-based switch from working.
+6. Leave all **Valves** (⚙️) on **Default**, above all `SEARCH_API_URL`: its default comes from the environment variable of the same name, and a Custom value would override it. No signing key is needed; citation links are signed by RomeGI when a user clicks them (see below).
 
 ### 5. Install the Tool
 
@@ -69,18 +66,20 @@ On first launch, Open WebUI prompts you to create an admin account. Complete the
 2. Set the tool ID to `rome_search_tool`.
 3. Paste the contents of `functions/rome_search_tool.py`.
 4. Save and enable.
-5. Set the same two Valves to **Custom** as for the filter, and leave the rest on **Default**.
+5. Leave all Valves on **Default**, as for the filter.
 
-### Choosing the retrieval backend
+### Retrieval backend and citation links
 
-Both plugins call ZeroEntropy or the rome search API, depending on `RETRIEVAL_BACKEND`:
+Both plugins call the rome search API at `SEARCH_API_URL`. They authenticate with a Google ID token from the container's service account, which needs `roles/run.invoker` on the search API.
+
+Citations store a stable link, `/api/v1/rome/pdf?path=<object>&page=<n>`, which never expires. When a signed-in user clicks it, RomeGI signs a fresh 2-day GCS URL for the corpus object and redirects to it. That needs these environment variables on the RomeGI service:
 
 | Variable | Value |
 |---|---|
-| `RETRIEVAL_BACKEND` | `zeroentropy` (default) or `rome` |
-| `SEARCH_API_URL` | the rome search API base URL, needed for `rome` |
+| `ROME_GCS_BUCKET` | the corpus bucket, e.g. `stackguardian-nonprod-rome-corpus` |
+| `ROME_PDF_URL_TTL_MINUTES` | signed URL lifetime, default `2880` (2 days) |
 
-With `rome`, the plugins authenticate with a Google ID token from the container's service account, which needs `roles/run.invoker` on the search API. Citations open the source PDF from the corpus bucket (`ROME_GCS_BUCKET`).
+Signing is keyless: the service account needs `roles/iam.serviceAccountTokenCreator` on itself and `roles/storage.objectViewer` on the corpus bucket.
 
 ### 6. Create the Workspace Model
 

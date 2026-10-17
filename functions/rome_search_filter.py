@@ -1,16 +1,15 @@
 """
 title: Rome Retrieval Filter
-description: Retrieves medical literature context for every query. Dispatches to the rome search API or ZeroEntropy depending on RETRIEVAL_BACKEND, with signed GCS URLs for citations.
-requirements: aiohttp, google-cloud-storage, google-auth
-version: 0.2.0
+description: Retrieves medical literature context for every query from the rome search API. Citations carry stable links that RomeGI signs when clicked.
+requirements: aiohttp, google-auth
+version: 0.3.0
 """
 
 import asyncio
-import datetime
 import html
-import json
 import os
 import re
+from urllib.parse import quote, urlencode
 
 import aiohttp
 from pydantic import BaseModel
@@ -96,92 +95,18 @@ def citation_label(snippet: dict) -> str:
     return shorten_title(title) if title else humanize_document_name(snippet.get("path", ""))
 
 
-def md_path_to_pdf_path(path: str) -> str:
-    """Map a markdown reference path to the original PDF path."""
-    if not path:
+def build_citation_link(object_path: str, page: str) -> str:
+    """Stable sign-on-click link for a corpus object; RomeGI signs it when the user clicks.
+
+    The link is relative and carries no signature or expiry, so it never goes stale.
+    ``page`` is added only when it is a real page number (not ``"N/A"``).
+    """
+    if not object_path:
         return ""
-    return re.sub(r"\.md$", ".pdf", path, flags=re.IGNORECASE)
-
-
-def build_signed_url(
-    path: str,
-    bucket: str,
-    credentials_json: str,
-    ttl_minutes: int = 60,
-) -> str:
-    """Generate a V4 signed URL for a GCS object.
-
-    Args:
-        path: The object key inside the bucket (e.g. ``raw/rome-v/bar.pdf``).
-        bucket: The GCS bucket name.
-        credentials_json: Service account key JSON as a string. If empty,
-            uses Application Default Credentials (must support signBlob).
-        ttl_minutes: How long the URL stays valid (default 60).
-
-    Returns:
-        A signed HTTPS URL, or the GCS console URL if signing fails.
-    """
-    if not path or not bucket:
-        return ""
-
-    try:
-        from google.cloud import storage
-        from google.oauth2 import service_account
-
-        if credentials_json:
-            info = json.loads(credentials_json)
-            creds = service_account.Credentials.from_service_account_info(info)
-            client = storage.Client(credentials=creds, project=info.get("project_id"))
-        else:
-            client = storage.Client()
-
-        blob = client.bucket(bucket).blob(path)
-        return blob.generate_signed_url(
-            version="v4",
-            expiration=datetime.timedelta(minutes=ttl_minutes),
-            method="GET",
-        )
-    except Exception:
-        # Fallback to console URL — works if user is authenticated to GCP project
-        return f"https://storage.cloud.google.com/{bucket}/{path}"
-
-
-def extract_page_number(snippet_text: str) -> str:
-    """Extract the page number from the nearest preceding ``<!-- page: N -->`` marker.
-
-    Returns the page number as a string, or ``"N/A"`` when no marker is found.
-    """
-    matches = re.findall(r"<!-- page: (\d+) -->", snippet_text)
-    if matches:
-        return matches[-1]
-    return "N/A"
-
-
-def normalize_zeroentropy_results(results: list) -> list:
-    """Normalize ZeroEntropy results into ``{path, content, page, object_path}`` dicts.
-
-    ZeroEntropy's ``page_span`` is zero-based, hence the ``+ 1``; when it is
-    absent the page is recovered from the snippet's ``<!-- page: N -->`` marker.
-    The citation target is the PDF next to the indexed markdown.
-    """
-    snippets = []
-    for result in results:
-        path = result.get("path", "")
-        content = result.get("content", "")
-        page_span = result.get("page_span")
-        if page_span:
-            page = str(page_span[0] + 1) if len(page_span) > 0 else "N/A"
-        else:
-            page = extract_page_number(content)
-        snippets.append(
-            {
-                "path": path,
-                "content": content,
-                "page": page,
-                "object_path": md_path_to_pdf_path(path),
-            }
-        )
-    return snippets
+    params = {"path": object_path}
+    if page and str(page).isdigit():
+        params["page"] = str(page)
+    return f"/api/v1/rome/pdf?{urlencode(params, quote_via=quote)}"
 
 
 def normalize_rome_results(results: list) -> list:
@@ -242,27 +167,6 @@ def fetch_id_token(audience: str) -> str:
     return id_token.fetch_id_token(google.auth.transport.requests.Request(), audience)
 
 
-async def search_zeroentropy(valves, query: str, k: int) -> list:
-    """Query ZeroEntropy's top-snippets endpoint and normalize the results."""
-    url = f"{valves.ZEROENTROPY_BASE_URL}/queries/top-snippets"
-    headers = {
-        "Authorization": f"Bearer {valves.ZEROENTROPY_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "query": query,
-        "collection_name": valves.COLLECTION_NAME,
-        "k": k,
-    }
-
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, json=payload, headers=headers) as resp:
-            resp.raise_for_status()
-            data = await resp.json()
-
-    return normalize_zeroentropy_results(data.get("results", []))
-
-
 async def search_rome(valves, query: str, k: int) -> list:
     """Query the rome search API's top-snippets endpoint and normalize the results."""
     base_url = valves.SEARCH_API_URL.rstrip("/")
@@ -302,18 +206,10 @@ class Filter:
     """Open WebUI Filter that retrieves context and appends disclaimers."""
 
     class Valves(BaseModel):
-        RETRIEVAL_BACKEND: str = os.getenv("RETRIEVAL_BACKEND", "zeroentropy")
         SEARCH_API_URL: str = os.getenv("SEARCH_API_URL", "")
         ROME_COLLECTION: str = ""
-        ROME_GCS_BUCKET: str = "stackguardian-nonprod-rome-corpus"
         REQUEST_TIMEOUT_SECONDS: int = 30
-        ZEROENTROPY_API_KEY: str = ""
-        ZEROENTROPY_BASE_URL: str = "https://api.zeroentropy.dev/v1"
-        COLLECTION_NAME: str = "markdown_output"
         SNIPPET_COUNT: int = 5
-        GCS_BUCKET: str = "stackguardian-nonprod-rome-uploads"
-        GCS_CREDENTIALS_JSON: str = ""
-        SIGNED_URL_TTL_MINUTES: int = 10080  # 7 days (max for V4 signed URLs)
         priority: int = 0
 
     def __init__(self):
@@ -323,7 +219,7 @@ class Filter:
         """Pre-process: retrieve snippets and inject them as context.
 
         1. Extract the last user message.
-        2. Query the configured backend (``RETRIEVAL_BACKEND``).
+        2. Query the rome search API.
         3. Format snippets and prepend as a system message.
         4. Emit citation events for each snippet.
         5. On failure, emit error status and return body unmodified.
@@ -336,18 +232,9 @@ class Filter:
         last_user_message = user_messages[-1].get("content", "")
 
         try:
-            # Tolerate stray whitespace/casing from the env var or a saved valve.
-            is_rome = self.valves.RETRIEVAL_BACKEND.strip().lower() == "rome"
-            if is_rome:
-                snippets = await search_rome(
-                    self.valves, last_user_message, self.valves.SNIPPET_COUNT
-                )
-                bucket = self.valves.ROME_GCS_BUCKET
-            else:
-                snippets = await search_zeroentropy(
-                    self.valves, last_user_message, self.valves.SNIPPET_COUNT
-                )
-                bucket = self.valves.GCS_BUCKET
+            snippets = await search_rome(
+                self.valves, last_user_message, self.valves.SNIPPET_COUNT
+            )
 
             if snippets:
                 context_text = format_snippets(snippets)
@@ -370,12 +257,7 @@ class Filter:
                         citation_name = build_unique_citation_name(
                             friendly_name, page, used_names
                         )
-                        pdf_url = build_signed_url(
-                            snippet["object_path"],
-                            bucket,
-                            self.valves.GCS_CREDENTIALS_JSON,
-                            self.valves.SIGNED_URL_TTL_MINUTES,
-                        )
+                        pdf_url = build_citation_link(snippet["object_path"], page)
                         cleaned_snippet = clean_snippet_content(snippet["content"])
                         # Append snippet index so multiple snippets from the same
                         # document don't get deduped into one citation badge
