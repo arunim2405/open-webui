@@ -500,6 +500,7 @@ from open_webui.env import (
     BYPASS_MODEL_ACCESS_CONTROL,
     RESET_CONFIG_ON_START,
     ENABLE_VERSION_UPDATE_CHECK,
+    ROMEGI_SIMPLIFIED_UI,
     ENABLE_OTEL,
     EXTERNAL_PWA_MANIFEST_URL,
     AIOHTTP_CLIENT_SESSION_SSL,
@@ -710,7 +711,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title='Open WebUI',
+    title=WEBUI_NAME,
     docs_url='/docs' if ENV == 'dev' else None,
     openapi_url='/openapi.json' if ENV == 'dev' else None,
     redoc_url=None,
@@ -2056,6 +2057,7 @@ async def get_app_config(request: Request):
             'enable_login_form': app.state.config.ENABLE_LOGIN_FORM,
             'enable_websocket': ENABLE_WEBSOCKET_SUPPORT,
             'enable_version_update_check': ENABLE_VERSION_UPDATE_CHECK,
+            'romegi_simplified_ui': ROMEGI_SIMPLIFIED_UI,
             'enable_public_active_users_count': ENABLE_PUBLIC_ACTIVE_USERS_COUNT,
             'enable_easter_eggs': ENABLE_EASTER_EGGS,
             **(
@@ -2462,7 +2464,7 @@ async def get_manifest_json():
         return {
             'name': app.state.WEBUI_NAME,
             'short_name': app.state.WEBUI_NAME,
-            'description': f'{app.state.WEBUI_NAME} is an open, extensible, user-friendly interface for AI that adapts to your workflow.',
+            'description': f'{app.state.WEBUI_NAME} research assistant',
             'start_url': '/',
             'display': 'standalone',
             'background_color': '#343541',
