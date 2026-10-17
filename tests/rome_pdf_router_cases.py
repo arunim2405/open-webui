@@ -152,3 +152,25 @@ def test_log_never_contains_signed_url(signer, caplog):
         get('/api/v1/rome/pdf?path=raw/x.pdf')
     assert 'X-Goog-Signature' not in caplog.text
     assert 'user_id=u1' in caplog.text and 'outcome=redirect' in caplog.text
+
+
+def test_log_line_cannot_be_forged_with_newlines(signer, caplog):
+    forged = 'secrets/x.pdf\nrome_pdf user_id=admin path=raw/y.pdf outcome=redirect'
+    with caplog.at_level(logging.INFO, logger=rome.log.name):
+        get(f'/api/v1/rome/pdf?path={quote(forged, safe="")}')
+    lines = [r.getMessage() for r in caplog.records if r.name == rome.log.name]
+    assert len(lines) == 1 and '\n' not in lines[0]
+    assert 'outcome=rejected' in lines[0]
+
+
+def test_logged_path_is_length_capped(signer, caplog):
+    with caplog.at_level(logging.INFO, logger=rome.log.name):
+        get(f'/api/v1/rome/pdf?src={"a" * 5000}')
+    assert all(len(r.getMessage()) < 1000 for r in caplog.records if r.name == rome.log.name)
+
+
+def test_signing_failure_logs_the_reason(signer, caplog):
+    signer.error = RuntimeError('signBlob permission denied for rome-cloud-run')
+    with caplog.at_level(logging.INFO, logger=rome.log.name):
+        get('/api/v1/rome/pdf?path=raw/x.pdf')
+    assert 'signBlob permission denied' in caplog.text

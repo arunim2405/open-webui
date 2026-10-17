@@ -37,8 +37,13 @@ rate_limiter = RateLimiter(redis_client=get_redis_client(), limit=ROME_PDF_RATE_
 _UNAVAILABLE = 'This document could not be opened. Please try again later.'
 
 
+def _loggable(text: str, limit: int = 300) -> str:
+    """Make user-supplied text safe for a single audit log line (no newlines, bounded)."""
+    return ''.join(c if c.isprintable() else '?' for c in text)[:limit]
+
+
 def _done(user_id: str, path: str, outcome: str, response: Response) -> Response:
-    log.info('rome_pdf user_id=%s path=%s outcome=%s', user_id, path, outcome)
+    log.info('rome_pdf user_id=%s path=%s outcome=%s', user_id, _loggable(path), _loggable(outcome))
     return response
 
 
@@ -75,7 +80,13 @@ async def open_corpus_pdf(
             ROME_PDF_SIGNER_CREDENTIALS_JSON,
         )
     except Exception as e:
-        log.warning('rome_pdf signing failed for path=%s: %s', object_path, type(e).__name__)
+        # Google auth/API errors name the cause (e.g. a missing IAM permission) and carry no tokens.
+        log.warning(
+            'rome_pdf signing failed for path=%s: %s: %s',
+            _loggable(object_path),
+            type(e).__name__,
+            _loggable(str(e), 500),
+        )
         return _done(user.id, object_path, 'sign_failed', HTMLResponse(_UNAVAILABLE, status_code=502))
 
     return _done(

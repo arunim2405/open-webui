@@ -23,7 +23,7 @@ def normalize_object_path(path: str, prefix: str) -> str:
     """Return ``path`` if it is a corpus object that may be signed, else raise InvalidPdfRequest."""
     if not path or len(path) > MAX_OBJECT_PATH_LENGTH:
         raise InvalidPdfRequest('invalid length')
-    if path.startswith('/') or '\\' in path or '//' in path or '%' in path:
+    if path.startswith('/') or '\\' in path or '//' in path:
         raise InvalidPdfRequest('invalid characters')
     if any(ord(c) < 32 or ord(c) == 127 for c in path):
         raise InvalidPdfRequest('control characters')

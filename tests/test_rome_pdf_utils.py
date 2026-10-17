@@ -45,6 +45,10 @@ def test_normalize_accepts_pdf():
     assert normalize_object_path('raw/rome-v/a b (1).pdf', P) == 'raw/rome-v/a b (1).pdf'
 
 
+def test_normalize_accepts_literal_percent_in_name():
+    assert normalize_object_path('raw/rome-v/100% response.pdf', P) == 'raw/rome-v/100% response.pdf'
+
+
 def test_normalize_accepts_markdown():
     assert normalize_object_path('raw/rome-v/notes.md', P) == 'raw/rome-v/notes.md'
 
@@ -59,7 +63,6 @@ def test_normalize_accepts_markdown():
         'raw/a/../../x.pdf',
         'raw\\x.pdf',
         'raw//x.pdf',
-        'raw/%2e%2e/x.pdf',
         'raw/x.exe',
         'raw/x.pdf\n',
         'raw/' + 'a' * 1100 + '.pdf',
