@@ -29,8 +29,10 @@ export const resolveCitationHref = (
 	if (!url) return null;
 	if (url.startsWith(`${ROME_PDF_PATH}?`)) return `${baseUrl}${url}`;
 	if (isGcsUrl(url)) {
+		// Only bucket and object path are needed; dropping the old signature keeps it out of access logs.
+		const { origin, pathname } = new URL(url);
 		const pageParam = /^\d+$/.test(String(page ?? '')) ? `&page=${page}` : '';
-		return `${baseUrl}${ROME_PDF_PATH}?src=${encodeURIComponent(url)}${pageParam}`;
+		return `${baseUrl}${ROME_PDF_PATH}?src=${encodeURIComponent(origin + pathname)}${pageParam}`;
 	}
 	return url.includes('http') ? url : null;
 };

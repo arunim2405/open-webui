@@ -14,9 +14,19 @@ describe('resolveCitationHref', () => {
 		expect(resolveCitationHref('/api/v1/rome/pdf?path=raw%2Fx.pdf', null, '')).toBe(
 			'/api/v1/rome/pdf?path=raw%2Fx.pdf'
 		));
-	it('rewrites legacy signed links with page', () =>
+	it('rewrites legacy signed links with page, dropping the old signature', () =>
 		expect(resolveCitationHref(LEGACY, '7', B)).toBe(
-			`${B}/api/v1/rome/pdf?src=${encodeURIComponent(LEGACY)}&page=7`
+			`${B}/api/v1/rome/pdf?src=${encodeURIComponent('https://storage.googleapis.com/c/raw/x.pdf')}&page=7`
+		));
+	it('keeps the percent-encoded object key when dropping the query', () =>
+		expect(
+			resolveCitationHref(
+				'https://storage.googleapis.com/c/raw/A%20B%20(1).pdf?X-Goog-Signature=a',
+				null,
+				B
+			)
+		).toBe(
+			`${B}/api/v1/rome/pdf?src=${encodeURIComponent('https://storage.googleapis.com/c/raw/A%20B%20(1).pdf')}`
 		));
 	it('rewrites console links without a non-numeric page', () =>
 		expect(resolveCitationHref(CONSOLE, 'N/A', B)).toBe(
