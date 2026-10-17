@@ -1,9 +1,10 @@
 import { APP_NAME } from '$lib/constants';
-import { type Writable, writable } from 'svelte/store';
+import { type Readable, type Writable, derived, writable } from 'svelte/store';
 import type { ModelConfig } from '$lib/apis';
 import type { Banner } from '$lib/types';
 import type { Socket } from 'socket.io-client';
 import type { AudioQueue } from '$lib/utils/audio';
+import { isSimplifiedUser } from '$lib/utils/romegi';
 
 import emojiShortCodes from '$lib/emoji-shortcodes.json';
 
@@ -17,6 +18,11 @@ export const WEBUI_DEPLOYMENT_ID = writable(null);
 
 export const config: Writable<Config | undefined> = writable(undefined);
 export const user: Writable<SessionUser | undefined> = writable(undefined);
+
+// RomeGI: true when power-user features should be hidden for the current user
+export const simplifiedUI: Readable<boolean> = derived([config, user], ([$config, $user]) =>
+	isSimplifiedUser($config, $user)
+);
 
 // Electron App
 export const isApp = writable(false);
@@ -287,6 +293,7 @@ type Config = {
 		enable_direct_connections: boolean;
 		enable_version_update_check: boolean;
 		folder_max_file_count?: number;
+		romegi_simplified_ui?: boolean;
 	};
 	oauth: {
 		providers: {
