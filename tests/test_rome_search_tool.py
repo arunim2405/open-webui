@@ -1,12 +1,12 @@
 """Unit tests for the rome Search Tool and Retrieval Filter.
 
-Covers the ``RETRIEVAL_BACKEND`` dispatch, the ID-token Authorization header
-sent to the rome search API, and the ``[N] Source: …, Page: …`` context format.
+Covers the ID-token Authorization header sent to the rome search API, the
+``[N] Source: …, Page: …`` context format, and the stable sign-on-click citation links.
 """
 
-import importlib
-import sys
 import os
+import sys
+from urllib.parse import parse_qs, urlsplit
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # Ensure the functions directory is importable
@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import pytest
 
+import functions.rome_search_filter
 import functions.rome_search_tool
 from functions.rome_search_filter import Filter
 from functions.rome_search_tool import Tools
@@ -78,11 +79,10 @@ def _post_url(mock_session):
 # ---------------------------------------------------------------------------
 
 class TestRomeSearchTool:
-    """The tool calls the rome search API with an ID token when RETRIEVAL_BACKEND=rome."""
+    """The tool calls the rome search API with an ID token."""
 
     def _tool(self, **valve_overrides):
         tool = Tools()
-        tool.valves.RETRIEVAL_BACKEND = 'rome'
         tool.valves.SEARCH_API_URL = SEARCH_API_URL
         for name, value in valve_overrides.items():
             setattr(tool.valves, name, value)
@@ -271,14 +271,6 @@ class TestRomeSearchTool:
         assert timeout.total == 12
 
     @pytest.mark.asyncio
-    async def test_backend_value_is_normalized(self):
-        """Whitespace and casing in the valve still select the rome backend."""
-        tool = self._tool(RETRIEVAL_BACKEND=' Rome\n')
-        _, mock_session, _ = await self._run(tool, [_rome_result()])
-
-        assert _post_url(mock_session) == f'{SEARCH_API_URL}/v1/top-snippets'
-
-    @pytest.mark.asyncio
     async def test_unconfigured_url_returns_graceful_message(self):
         """An empty SEARCH_API_URL fails with a message rather than an unauthenticated call."""
         tool = self._tool(SEARCH_API_URL='')
@@ -288,69 +280,14 @@ class TestRomeSearchTool:
 
 
 # ---------------------------------------------------------------------------
-# Search Tool — ZeroEntropy backend (default)
-# ---------------------------------------------------------------------------
-
-class TestZeroEntropyBackendDispatch:
-    """The default backend keeps the existing ZeroEntropy behaviour."""
-
-    def test_default_backend_is_zeroentropy(self, monkeypatch):
-        """With no RETRIEVAL_BACKEND in the environment the valve default is zeroentropy.
-
-        The default is read at import time, so the module is reloaded with the
-        variable unset — otherwise a shell that exports it fails this test.
-        """
-        monkeypatch.delenv('RETRIEVAL_BACKEND', raising=False)
-        module = importlib.reload(functions.rome_search_tool)
-        try:
-            assert module.Tools().valves.RETRIEVAL_BACKEND == 'zeroentropy'
-        finally:
-            importlib.reload(module)
-
-    @pytest.mark.asyncio
-    async def test_zeroentropy_request_uses_api_key(self):
-        """The ZeroEntropy path posts to its own endpoint with the API key."""
-        tool = Tools()
-        tool.valves.RETRIEVAL_BACKEND = 'zeroentropy'
-        tool.valves.ZEROENTROPY_API_KEY = 'ze-test-key'
-        mock_session = _make_mock_session(_make_mock_response([]))
-
-        with patch('functions.rome_search_tool.aiohttp.ClientSession', return_value=mock_session):
-            await tool.search_medical_literature(query='q', k=3)
-
-        assert _post_url(mock_session) == 'https://api.zeroentropy.dev/v1/queries/top-snippets'
-        kwargs = _post_kwargs(mock_session)
-        assert kwargs['headers']['Authorization'] == 'Bearer ze-test-key'
-        assert kwargs['json'] == {
-            'query': 'q',
-            'collection_name': 'markdown_output',
-            'k': 3,
-        }
-
-    @pytest.mark.asyncio
-    async def test_zeroentropy_page_span_is_one_based_in_output(self):
-        """ZeroEntropy's zero-based page_span still renders as a one-based page."""
-        tool = Tools()
-        tool.valves.RETRIEVAL_BACKEND = 'zeroentropy'
-        results = [{'path': 'docs/a.md', 'content': 'body', 'page_span': [10, 11]}]
-        mock_session = _make_mock_session(_make_mock_response(results))
-
-        with patch('functions.rome_search_tool.aiohttp.ClientSession', return_value=mock_session):
-            output = await tool.search_medical_literature(query='q', k=1)
-
-        assert output == '[1] Source: docs/a.md, Page: 11\nbody'
-
-
-# ---------------------------------------------------------------------------
 # Retrieval Filter
 # ---------------------------------------------------------------------------
 
 class TestRomeRetrievalFilter:
-    """The filter dispatches on the same valve and injects context as a system message."""
+    """The filter injects retrieved context as a system message."""
 
-    def _filter(self, backend='rome'):
+    def _filter(self):
         filt = Filter()
-        filt.valves.RETRIEVAL_BACKEND = backend
         filt.valves.SEARCH_API_URL = SEARCH_API_URL
         return filt
 
@@ -401,8 +338,7 @@ class TestRomeRetrievalFilter:
         )]))
 
         with patch('functions.rome_search_filter.aiohttp.ClientSession', return_value=mock_session), \
-                patch('functions.rome_search_filter.fetch_id_token', return_value=ID_TOKEN), \
-                patch('functions.rome_search_filter.build_signed_url', return_value='https://signed'):
+                patch('functions.rome_search_filter.fetch_id_token', return_value=ID_TOKEN):
             await filt.inlet({'messages': [{'role': 'user', 'content': 'q'}]}, __event_emitter__=emitter)
 
         names = [
@@ -410,17 +346,6 @@ class TestRomeRetrievalFilter:
             if call.args[0]['type'] == 'citation'
         ]
         assert names == ['Global Prevalence and Impact of Rumination Syndrome (p. 2)']
-
-    @pytest.mark.asyncio
-    async def test_filter_defaults_to_zeroentropy(self):
-        """With the default valve the filter keeps calling ZeroEntropy."""
-        filt = self._filter(backend='zeroentropy')
-        mock_session = _make_mock_session(_make_mock_response([]))
-
-        with patch('functions.rome_search_filter.aiohttp.ClientSession', return_value=mock_session):
-            await filt.inlet({'messages': [{'role': 'user', 'content': 'q'}]})
-
-        assert _post_url(mock_session) == 'https://api.zeroentropy.dev/v1/queries/top-snippets'
 
     @pytest.mark.asyncio
     async def test_retrieval_failure_leaves_body_unchanged(self):
@@ -439,3 +364,73 @@ class TestRomeRetrievalFilter:
             if call.args[0]['type'] == 'status'
         ]
         assert 'boom' in statuses[-1]['data']['description']
+
+
+# ---------------------------------------------------------------------------
+# Sign-on-click citation links
+# ---------------------------------------------------------------------------
+
+PLUGINS = [functions.rome_search_filter, functions.rome_search_tool]
+
+
+@pytest.mark.parametrize('module', PLUGINS)
+def test_citation_link_with_page(module):
+    assert module.build_citation_link('raw/rome-v/x.pdf', '12') == '/api/v1/rome/pdf?path=raw%2Frome-v%2Fx.pdf&page=12'
+
+
+@pytest.mark.parametrize('module', PLUGINS)
+def test_citation_link_omits_non_numeric_page(module):
+    assert 'page=' not in module.build_citation_link('raw/rome-v/x.pdf', 'N/A')
+
+
+@pytest.mark.parametrize('module', PLUGINS)
+def test_citation_link_empty_path_is_empty(module):
+    assert module.build_citation_link('', '3') == ''
+
+
+@pytest.mark.parametrize('module', PLUGINS)
+def test_citation_link_encodes_awkward_names(module):
+    key = 'raw/rome-v/Bowel Disorders_Document C (FINAL), é.pdf'
+    link = module.build_citation_link(key, '3')
+    query = parse_qs(urlsplit(link).query)
+    assert link.startswith('/api/v1/rome/pdf?')
+    assert query['path'] == [key] and query['page'] == ['3']
+
+
+@pytest.mark.parametrize('module', PLUGINS)
+def test_plugins_do_not_import_google_cloud(module):
+    with open(module.__file__) as f:
+        assert 'google.cloud' not in f.read()
+
+
+def _citation_urls(emitter):
+    return [
+        call.args[0]['data']['source']['url'] for call in emitter.call_args_list
+        if call.args[0]['type'] == 'citation'
+    ]
+
+
+@pytest.mark.asyncio
+async def test_tool_emits_stable_citation_link():
+    emitter = AsyncMock()
+    tool = Tools()
+    tool.valves.SEARCH_API_URL = SEARCH_API_URL
+    mock_session = _make_mock_session(_make_mock_response([_rome_result(document_path='rome-v/a b.pdf', page_start=7)]))
+    with patch('functions.rome_search_tool.aiohttp.ClientSession', return_value=mock_session), \
+            patch('functions.rome_search_tool.fetch_id_token', return_value=ID_TOKEN):
+        await tool.search_medical_literature(query='q', k=1, __event_emitter__=emitter)
+
+    assert _citation_urls(emitter) == ['/api/v1/rome/pdf?path=raw%2Frome-v%2Fa%20b.pdf&page=7']
+
+
+@pytest.mark.asyncio
+async def test_filter_emits_stable_citation_link():
+    emitter = AsyncMock()
+    filt = Filter()
+    filt.valves.SEARCH_API_URL = SEARCH_API_URL
+    mock_session = _make_mock_session(_make_mock_response([_rome_result(document_path='rome-v/a.pdf', page_start=None)]))
+    with patch('functions.rome_search_filter.aiohttp.ClientSession', return_value=mock_session), \
+            patch('functions.rome_search_filter.fetch_id_token', return_value=ID_TOKEN):
+        await filt.inlet({'messages': [{'role': 'user', 'content': 'q'}]}, __event_emitter__=emitter)
+
+    assert _citation_urls(emitter) == ['/api/v1/rome/pdf?path=raw%2Frome-v%2Fa.pdf']

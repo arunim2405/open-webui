@@ -50,6 +50,12 @@ variable "search_api_url" {
   default     = "https://rome-search-api-3lziri3uha-uc.a.run.app"
 }
 
+variable "rome_corpus_bucket" {
+  description = "GCS bucket holding the Rome corpus documents that citation links open (read access is granted in the rome-ingestion-search repo)"
+  type        = string
+  default     = "stackguardian-nonprod-rome-corpus"
+}
+
 variable "retrieval_backend" {
   description = "Retrieval backend the open-webui functions use: zeroentropy | rome"
   type        = string

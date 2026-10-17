@@ -3,7 +3,8 @@
 	import Modal from '$lib/components/common/Modal.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import Markdown from '$lib/components/chat/Messages/Markdown.svelte';
-	import { WEBUI_API_BASE_URL } from '$lib/constants';
+	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
+	import { isCorpusCitationUrl, resolveCitationHref } from '$lib/utils/citationLinks';
 	import { settings } from '$lib/stores';
 
 	import XMark from '$lib/components/icons/XMark.svelte';
@@ -68,6 +69,11 @@
 		const { file_id, page } = metadata ?? {};
 		const sourceUrl = source?.url;
 
+		// Corpus documents are signed on click; PDF viewers ignore text fragments, so no fragment.
+		if (!file_id && isCorpusCitationUrl(sourceUrl)) {
+			return resolveCitationHref(sourceUrl, page, WEBUI_BASE_URL);
+		}
+
 		const baseUrl = file_id
 			? `${WEBUI_API_BASE_URL}/files/${file_id}/content${page !== undefined ? `#page=${page + 1}` : ''}`
 			: sourceUrl?.includes('http')
@@ -100,7 +106,7 @@
 			<div class=" text-lg font-medium self-center flex items-center">
 				{#if citation?.source?.name}
 					{@const document = mergedDocuments?.[0]}
-					{#if document?.metadata?.file_id || document.source?.url?.includes('http')}
+					{#if document?.metadata?.file_id || document.source?.url?.includes('http') || isCorpusCitationUrl(document.source?.url)}
 						<Tooltip
 							className="w-fit"
 							content={document.source?.url?.includes('http')
@@ -113,9 +119,15 @@
 								class="hover:text-gray-500 dark:hover:text-gray-100 underline grow line-clamp-1"
 								href={document?.metadata?.file_id
 									? `${WEBUI_API_BASE_URL}/files/${document?.metadata?.file_id}/content${document?.metadata?.page !== undefined ? `#page=${document.metadata.page + 1}` : ''}`
-									: document.source?.url?.includes('http')
-										? document.source.url
-										: `#`}
+									: isCorpusCitationUrl(document.source?.url)
+										? resolveCitationHref(
+												document.source.url,
+												document?.metadata?.page,
+												WEBUI_BASE_URL
+											)
+										: document.source?.url?.includes('http')
+											? document.source.url
+											: `#`}
 								target="_blank"
 							>
 								{decodeString(citation?.source?.name)}
@@ -160,7 +172,7 @@
 							<div
 								class=" text-sm font-medium dark:text-gray-300 flex items-center gap-2 w-fit mb-1"
 							>
-								{#if document.source?.url?.includes('http')}
+								{#if document.source?.url?.includes('http') || isCorpusCitationUrl(document.source?.url)}
 									{@const snippetUrl = getTextFragmentUrl(document)}
 									{#if snippetUrl}
 										<a
