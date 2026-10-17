@@ -5,6 +5,13 @@ resource "google_service_account" "cloud_run" {
   display_name = "Rome Cloud Run Service Account"
 }
 
+# Sign corpus citation URLs keylessly (IAM signBlob as itself), so no signing key is stored.
+resource "google_service_account_iam_member" "cloud_run_self_token_creator" {
+  service_account_id = google_service_account.cloud_run.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:${google_service_account.cloud_run.email}"
+}
+
 # Cloud SQL Client
 resource "google_project_iam_member" "cloud_run_sql" {
   project = var.project_id

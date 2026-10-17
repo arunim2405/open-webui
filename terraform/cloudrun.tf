@@ -142,6 +142,16 @@ resource "google_cloud_run_v2_service" "openwebui" {
       }
 
       env {
+        name  = "ROME_GCS_BUCKET"
+        value = var.rome_corpus_bucket
+      }
+
+      env {
+        name  = "ROME_PDF_URL_TTL_MINUTES"
+        value = "2880"
+      }
+
+      env {
         name  = "ENABLE_IMAGE_GENERATION"
         value = "false"
       }
