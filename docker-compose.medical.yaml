@@ -1,6 +1,6 @@
 services:
   open-webui:
-    image: ghcr.io/open-webui/open-webui:main
+    build: .
     container_name: rome-medical-assistant
     ports:
       - "3000:8080"
@@ -10,8 +10,10 @@ services:
       # - OPENAI_API_BASE_URL=https://api.openai.com/v1
       # - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ENABLE_OLLAMA_API=false
-      - WEBUI_NAME=Rome Medical Assistant
-      - DEFAULT_MODELS=gpt-5.4
+      - WEBUI_NAME=RomeGI
+      - DEFAULT_MODELS=rome-medical-assistant
+      - ENABLE_VERSION_UPDATE_CHECK=false
+      - ROMEGI_SIMPLIFIED_UI=true
       - ENABLE_IMAGE_GENERATION=false
       - ENABLE_COMMUNITY_SHARING=false
       - ENABLE_WEB_SEARCH=false

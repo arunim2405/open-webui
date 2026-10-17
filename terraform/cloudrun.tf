@@ -123,12 +123,22 @@ resource "google_cloud_run_v2_service" "openwebui" {
 
       env {
         name  = "WEBUI_NAME"
-        value = "Rome Medical Assistant"
+        value = "RomeGI"
       }
 
       env {
         name  = "DEFAULT_MODELS"
-        value = "gpt-5.4"
+        value = "rome-medical-assistant"
+      }
+
+      env {
+        name  = "ENABLE_VERSION_UPDATE_CHECK"
+        value = "false"
+      }
+
+      env {
+        name  = "ROMEGI_SIMPLIFIED_UI"
+        value = "true"
       }
 
       env {
