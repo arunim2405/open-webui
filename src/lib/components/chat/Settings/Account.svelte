@@ -2,7 +2,7 @@
 	import { toast } from 'svelte-sonner';
 	import { onMount, getContext } from 'svelte';
 
-	import { user, config, settings } from '$lib/stores';
+	import { user, config, settings, simplifiedUI } from '$lib/stores';
 	import { updateUserProfile, createAPIKey, getAPIKey, getSessionUser } from '$lib/apis/auths';
 	import { WEBUI_BASE_URL } from '$lib/constants';
 
@@ -157,77 +157,79 @@
 							</div>
 						</div>
 
-						<div class="flex flex-col w-full mt-2">
-							<div class=" mb-1 text-xs font-medium">{$i18n.t('Bio')}</div>
+						{#if !$simplifiedUI}
+							<div class="flex flex-col w-full mt-2">
+								<div class=" mb-1 text-xs font-medium">{$i18n.t('Bio')}</div>
 
-							<div class="flex-1">
-								<Textarea
-									className="w-full text-sm dark:text-gray-300 bg-transparent outline-hidden"
-									minSize={60}
-									bind:value={bio}
-									ariaLabel={$i18n.t('Bio')}
-									placeholder={$i18n.t('Share your background and interests')}
-								/>
-							</div>
-						</div>
-
-						<div class="flex flex-col w-full mt-2">
-							<div class=" mb-1 text-xs font-medium">{$i18n.t('Gender')}</div>
-
-							<div class="flex-1">
-								<select
-									class="w-full text-sm dark:text-gray-300 bg-transparent outline-hidden"
-									bind:value={_gender}
-									aria-label={$i18n.t('Gender')}
-									on:change={(e) => {
-										console.log(_gender);
-
-										if (_gender === 'custom') {
-											// Handle custom gender input
-											gender = '';
-										} else {
-											gender = _gender;
-										}
-									}}
-								>
-									<option value="" selected>{$i18n.t('Prefer not to say')}</option>
-									<option value="male">{$i18n.t('Male')}</option>
-									<option value="female">{$i18n.t('Female')}</option>
-									<option value="custom">{$i18n.t('Custom')}</option>
-								</select>
+								<div class="flex-1">
+									<Textarea
+										className="w-full text-sm dark:text-gray-300 bg-transparent outline-hidden"
+										minSize={60}
+										bind:value={bio}
+										ariaLabel={$i18n.t('Bio')}
+										placeholder={$i18n.t('Share your background and interests')}
+									/>
+								</div>
 							</div>
 
-							{#if _gender === 'custom'}
-								<input
-									class="w-full text-sm dark:text-gray-300 bg-transparent outline-hidden mt-1"
-									type="text"
-									required
-									aria-label={$i18n.t('Custom Gender')}
-									placeholder={$i18n.t('Enter your gender')}
-									bind:value={gender}
-								/>
-							{/if}
-						</div>
+							<div class="flex flex-col w-full mt-2">
+								<div class=" mb-1 text-xs font-medium">{$i18n.t('Gender')}</div>
 
-						<div class="flex flex-col w-full mt-2">
-							<div class=" mb-1 text-xs font-medium">{$i18n.t('Birth Date')}</div>
+								<div class="flex-1">
+									<select
+										class="w-full text-sm dark:text-gray-300 bg-transparent outline-hidden"
+										bind:value={_gender}
+										aria-label={$i18n.t('Gender')}
+										on:change={(e) => {
+											console.log(_gender);
 
-							<div class="flex-1">
-								<input
-									class="w-full text-sm dark:text-gray-300 dark:placeholder:text-gray-300 bg-transparent outline-hidden"
-									type="date"
-									aria-label={$i18n.t('Birth Date')}
-									bind:value={dateOfBirth}
-									required
-								/>
+											if (_gender === 'custom') {
+												// Handle custom gender input
+												gender = '';
+											} else {
+												gender = _gender;
+											}
+										}}
+									>
+										<option value="" selected>{$i18n.t('Prefer not to say')}</option>
+										<option value="male">{$i18n.t('Male')}</option>
+										<option value="female">{$i18n.t('Female')}</option>
+										<option value="custom">{$i18n.t('Custom')}</option>
+									</select>
+								</div>
+
+								{#if _gender === 'custom'}
+									<input
+										class="w-full text-sm dark:text-gray-300 bg-transparent outline-hidden mt-1"
+										type="text"
+										required
+										aria-label={$i18n.t('Custom Gender')}
+										placeholder={$i18n.t('Enter your gender')}
+										bind:value={gender}
+									/>
+								{/if}
 							</div>
-						</div>
+
+							<div class="flex flex-col w-full mt-2">
+								<div class=" mb-1 text-xs font-medium">{$i18n.t('Birth Date')}</div>
+
+								<div class="flex-1">
+									<input
+										class="w-full text-sm dark:text-gray-300 dark:placeholder:text-gray-300 bg-transparent outline-hidden"
+										type="date"
+										aria-label={$i18n.t('Birth Date')}
+										bind:value={dateOfBirth}
+										required
+									/>
+								</div>
+							</div>
+						{/if}
 					</div>
 				</div>
 			</div>
 		</div>
 
-		{#if $config?.features?.enable_user_webhooks}
+		{#if !$simplifiedUI && $config?.features?.enable_user_webhooks}
 			<div class="mt-2">
 				<div class="flex flex-col w-full">
 					<div class=" mb-1 text-xs font-medium">{$i18n.t('Notification Webhook')}</div>
@@ -254,7 +256,7 @@
 			</div>
 		{/if}
 
-		{#if ($config?.features?.enable_api_keys ?? true) && ($user?.role === 'admin' || ($user?.permissions?.features?.api_keys ?? false))}
+		{#if !$simplifiedUI && ($config?.features?.enable_api_keys ?? true) && ($user?.role === 'admin' || ($user?.permissions?.features?.api_keys ?? false))}
 			<div class="flex justify-between items-center text-sm mt-2">
 				<div class="  font-medium">{$i18n.t('API keys')}</div>
 				<button

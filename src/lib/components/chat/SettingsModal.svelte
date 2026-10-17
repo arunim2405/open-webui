@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getContext, onMount, tick } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { config, models, settings, user } from '$lib/stores';
+	import { config, models, settings, simplifiedUI, user } from '$lib/stores';
 	import { updateUserSettings } from '$lib/apis/users';
 	import { getModels as _getModels } from '$lib/apis';
 	import { goto } from '$app/navigation';
@@ -480,6 +480,14 @@
 
 	const getAvailableSettings = () => {
 		return allSettings.filter((tab) => {
+			if ($simplifiedUI && !['general', 'account'].includes(tab.id)) {
+				return false;
+			}
+
+			if (tab.id === 'about') {
+				return $user?.role === 'admin';
+			}
+
 			if (tab.id === 'connections') {
 				return $config?.features?.enable_direct_connections;
 			}
