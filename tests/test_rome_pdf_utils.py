@@ -1,15 +1,17 @@
 """Unit tests for sign-on-click corpus PDF helpers (validation, legacy links, signing)."""
 
+import datetime as dt
 import os
 import subprocess
 import sys
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 # Configure an isolated in-memory backend BEFORE any open_webui import.
 os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
 os.environ['ENABLE_DB_MIGRATIONS'] = 'false'
 
-BACKEND_DIR = os.path.join(os.path.dirname(__file__), '..', 'backend')
-sys.path.insert(0, BACKEND_DIR)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
 import pytest
 from open_webui.utils.rome_pdf import (
@@ -17,8 +19,10 @@ from open_webui.utils.rome_pdf import (
     normalize_object_path,
     object_path_from_legacy_url,
     redirect_target,
+    sign_object_url,
 )
 
+BACKEND_DIR = os.path.join(os.path.dirname(__file__), '..', 'backend')
 P = 'raw/'
 B = 'stackguardian-nonprod-rome-corpus'
 
@@ -114,3 +118,72 @@ def test_settings_defaults():
     assert load_env_value('ROME_PDF_URL_TTL_MINUTES') == '2880'
     assert load_env_value('ROME_PDF_PREFIX') == 'raw/'
     assert load_env_value('ROME_PDF_RATE_LIMIT_PER_MINUTE') == '60'
+
+
+# --- Signer (patched at the google-auth / google-cloud-storage boundary) ---
+
+
+@pytest.fixture
+def fake_storage(monkeypatch):
+    import google.cloud.storage as gcs_storage
+
+    blob = MagicMock()
+    blob.generate_signed_url.return_value = 'https://signed'
+    client = MagicMock()
+    client.bucket.return_value.blob.return_value = blob
+    client_cls = MagicMock(return_value=client)
+    monkeypatch.setattr(gcs_storage, 'Client', client_cls)
+    return SimpleNamespace(blob=blob, client_cls=client_cls)
+
+
+@pytest.fixture
+def fake_default_creds(monkeypatch):
+    import google.auth
+
+    creds = MagicMock()
+    creds.service_account_email = 'runtime@p.iam.gserviceaccount.com'
+    creds.token = None
+
+    def _refresh(_request):
+        creds.token = 'tok'
+
+    creds.refresh.side_effect = _refresh
+    default = MagicMock(return_value=(creds, 'p'))
+    monkeypatch.setattr(google.auth, 'default', default)
+    return SimpleNamespace(creds=creds, default=default)
+
+
+def test_sign_keyless_uses_iam_signblob(fake_default_creds, fake_storage):
+    url = sign_object_url('b', 'raw/x.pdf', 2880)
+    kw = fake_storage.blob.generate_signed_url.call_args.kwargs
+    assert url == 'https://signed'
+    assert kw['version'] == 'v4' and kw['method'] == 'GET'
+    assert kw['expiration'] == dt.timedelta(minutes=2880)
+    assert kw['service_account_email'] == 'runtime@p.iam.gserviceaccount.com'
+    assert kw['access_token'] == 'tok'
+    fake_storage.client_cls.return_value.bucket.assert_called_with('b')
+    fake_storage.client_cls.return_value.bucket.return_value.blob.assert_called_with('raw/x.pdf')
+
+
+def test_sign_uses_explicit_signer_email(fake_default_creds, fake_storage):
+    sign_object_url('b', 'raw/x.pdf', 2880, signer_email='signer@p.iam.gserviceaccount.com')
+    kw = fake_storage.blob.generate_signed_url.call_args.kwargs
+    assert kw['service_account_email'] == 'signer@p.iam.gserviceaccount.com'
+
+
+def test_sign_with_key_json_does_not_call_default(fake_default_creds, fake_storage, monkeypatch):
+    from google.oauth2 import service_account
+
+    from_info = MagicMock(return_value=MagicMock())
+    monkeypatch.setattr(service_account.Credentials, 'from_service_account_info', from_info)
+    sign_object_url('b', 'raw/x.pdf', 2880, credentials_json='{"project_id": "p"}')
+    kw = fake_storage.blob.generate_signed_url.call_args.kwargs
+    from_info.assert_called_once_with({'project_id': 'p'})
+    fake_default_creds.default.assert_not_called()
+    assert 'access_token' not in kw
+
+
+def test_sign_failure_raises(fake_default_creds, fake_storage):
+    fake_storage.blob.generate_signed_url.side_effect = Exception('denied')
+    with pytest.raises(Exception, match='denied'):
+        sign_object_url('b', 'raw/x.pdf', 2880)
